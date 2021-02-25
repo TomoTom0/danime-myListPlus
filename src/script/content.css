@@ -1,0 +1,32 @@
+.btnChEx1{
+    float:right;
+    width:27%;
+    margin:8px 3.75% 8px 0;
+    padding:12px 0;
+    background:#ec5528;
+    text-align:center;
+    font-weight:bold;
+    font-size:1.4rem;
+    color:#fff;
+    cursor:pointer
+}
+
+html.mouseDevice .editFooter .btnCancel:hover{
+    background:#ffe066;text-decoration:none}
+
+html.mouseDevice .editFooter .btnChEx1:hover{
+    background:#f3997e;text-decoration:none
+}
+
+.editFooter a.btnChEx1:link,
+html.mouseDevice .editFooter .btnChEx1 a:hover,
+.editFooter a.btnChEx1:visited,
+html.mouseDevice .editFooter a.btnChEx1:active
+{color:#fff}
+
+.editFooter .btnChEx1{
+    float:right;width:27%;font-size:1.6rem
+}
+html.mouseDevice .editFooter .btnChEx1:hover{
+    text-decoration:none;background:#f4997e
+}

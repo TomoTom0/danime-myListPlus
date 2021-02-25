@@ -1,0 +1,11 @@
+{
+  "name": "danime-Plus",
+  "description": "dアニメストアのリスト編集機能を改良します。",
+  "version": "0.1",
+  "manifest_version": 2,
+  "content_scripts": [{
+    "matches": ["https://anime.dmkt-sp.jp/animestore/*"],
+    "js": ["js/jquery-3.5.1.min.js", "script/content_script.js"],
+    "css":["script/content.css"]
+  }]
+}
