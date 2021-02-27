@@ -1,4 +1,4 @@
-﻿$(function () {
+﻿$(async function () {
     const url_modes = Object.entries({
         viewList: "https://anime.dmkt-sp.jp/animestore/mpa_mylists_pc",
         editList: "https://anime.dmkt-sp.jp/animestore/mpa_shr_pc",
@@ -12,141 +12,418 @@
     }).filter(kv => location.href.indexOf(kv[1]) != -1);
     if (url_modes.length == 0) return;
     const url_mode = url_modes[0][0];
-    addInitialButton(url_mode);
+    await addInitialButton(url_mode);
 
 
     document.addEventListener("click", async function (e) {
-        //console.log(e.target)
-        //const IsEditMode = ($("body").attr("class").indexOf("editMode") != -1);
-        if ($(e.target).attr("class")) {
-            const e_class = $(e.target).attr("class")
-            if (e_class.indexOf("btnOpenAddMyList") != -1) {
-                $("html").css({ "overflow-y": "hidden" });
-                await addMylistModal();
-
-            } else if (e_class.indexOf("btnAddMyList") != -1) {
-                const workIds = $(".contentsWrapper .itemWrapper .itemModule.selected>input").map((ind, obj) => $(obj).val());
-                const sharelistIds = $(".sharelistId.on").map((ind, obj) => $(obj).data("sharelistid")).toArray();
-                for (const workId of workIds) {
-                    const res = await fetch(window.COMMON.RESTAPI_ENDPOINT.getShareList + "?workId=" + workId).then(d => d.json());
-                    const sharelistStatuses = res.data.shareList
-                    const sharelistLimited = sharelistStatuses.filter(d => d.status == 0 && sharelistIds.indexOf(d.shareListId) != -1);
-                    if (sharelistLimited.length == 0) continue;
-                    editMyList(workId, sharelistLimited.map(d => d.shareListId), []);
-                };
+        console.log(e.target, $(e.target).parents(".pageWrapper"))
+        const IsEditMode = $("body").is(".editMode");
+        const container=($("modal").length<2) ? $(".pageWrapper") : $(e.target).parents("modal");
+        //const e_class = $(e.target).attr("class") || "";
+        if ($(e.target).is(".itemModule.openCacheList *")) {
+            const cacheListId = $(e.target).parents("a:eq(0)").data("cachelistid");
+            await viewWorksOfCacheListModal(cacheListId);
+        } else if ($(e.target).is(".btnOpenAddMyList")) {
+            await addMylistModal(container);
+        } else if ($(e.target).is(".btnOpenNewMyList")) {
+            newMyListModal();
+        } else if ($(e.target).is(".btnNewMyList")) {
+            const newMyListName = $("#newMyListName").val();
+            await createNewList(newMyListName);
+            $(`modal.newMyListDialog`).remove();
+            await remakeAddMyListModal();
+        } else if ($(e.target).is(".editFooter .btnCopyList")) {
+            await copyList($(e.target).is(".aboutCache"));
+            $(".contentsWrapper .itemWrapper .itemModule.selected").each((ind, obj) => {
+                $(obj).removeClass("selected").addClass("notSelected");
+            })
+            $("body").toggleClass("editMode");
+            location.reload();
+            /*$(".contentsWrapper .itemWrapper .itemModule.selected").each((ind, obj) => {
+                $(obj).removeClass("selected").addClass("notSelected");
+            })*/
+            //
+        } else if ($(e.target).is(".editFooter .btnDeleteCacheList")) {
+            const selectedCacheLists = $(".contentsWrapper .itemWrapper .itemModule.selected>input.cacheListId");
+            if (selectedCacheLists.length == 0) return;
+            const selectedCacheIds = selectedCacheLists.map((ind, obj) => $(obj).val()).toArray();
+            await deleteCacheList(selectedCacheIds);
+            await showCacheList();
+        }  else if ($(e.target).is("modal.modalDialogChEx *")) {
+            const modal = $(e.target).parents("modal");
+            if ($(e.target).is(".closeBtn *, .closeBtn")){
+                if (IsEditMode) toggleEdit(modal, false);
+                modal.remove();
+            }  else if ($(e.target).is(".btnAddMyList")) {
+                const workIds = $(".itemModule.selected>input", container).map((ind, obj) => $(obj).val()).toArray();
+                const sharelistIds = $(".sharelistId.on", modal).map((ind, obj) => $(obj).data("sharelistid")).toArray();
+                const cachelistIds = $(".cachelistId.on", modal).map((ind, obj) => $(obj).data("cachelistid")).toArray();
+                await addWorkToLists(workIds, {cachelistIds, sharelistIds});
                 $("modal.addMyListDialog").remove();
-                $("html").css({ "overflow-y": "" });
-                $("body").toggleClass("editMode");
-                $(".contentsWrapper .itemWrapper .itemModule.selected").each((ind, obj) => {
-                    $(obj).removeClass("selected").addClass("notSelected");
-                })
+                toggleEdit(container, false)
                 console.log("done");
-            } else if (e_class.indexOf("btnOpenNewMyList") != -1) {
-                newMyListModal();
-            } else if (e_class.indexOf("btnNewMyList") != -1) {
-                createShareList($("#newMyListName").val(), true, "");
-                $(`modal.newMyListDialog`).remove();
-                await remakeAddMyListModal();
-            } else if (e_class.indexOf("btnCopyList") != -1) {
-                await copyList().then(_=>{
-                    setTimeout(function(){
-                        $(".contentsWrapper .itemWrapper .itemModule.selected").each((ind, obj) => {
-                            $(obj).removeClass("selected").addClass("notSelected");
-                        })
-                        $("body").toggleClass("editMode");
-                        location.reload();
-                    }, 500)
+            } else if ($(e.target).is($(".btnEdit *,.btnEditCancel *"))) {
+                // toggle Edit mode for new Module
+                toggleEdit($(e.target).parents(".formContainerIn"), $(e.target).is(".btnEdit *"))
+                const selectedWorks=$(".formContainerIn .itemModule.selected", modal);
+                $(".btnDelete span", modal).html(selectedWorks.length);
+            } else if (IsEditMode&& $(e.target).is(".btnSelectToggle *, .btnSelectToggle")){
+                const toggleArea=$(e.target).parents(".btnSelectToggle");
+                toggleArea.toggleClass("checked");
+                $(".itemModule", $(e.target).parents(".formContainerIn")).map((ind, obj) => {
+                    if (toggleArea.is(".checked")) $(obj).addClass("selected").removeClass("notSelected");
+                    else $(obj).removeClass("selected").addClass("notSelected");;
                 });
-                /*$(".contentsWrapper .itemWrapper .itemModule.selected").each((ind, obj) => {
-                    $(obj).removeClass("selected").addClass("notSelected");
-                })*/
-                //
+                const selectedWorks=$(".formContainerIn .itemModule.selected", modal);
+                $(".btnDelete span", modal).html(selectedWorks.length);
+            } else if (IsEditMode && $(e.target).is(".itemModule *")) {
+                const itemModule = $(e.target).parents(".itemModule");
+                $(itemModule).toggleClass("selected").toggleClass("notSelected");
+                const selectedWorks=$(".formContainerIn .itemModule.selected", modal);
+                $(".btnDelete span", modal).html(selectedWorks.length);
+            } else if (IsEditMode && $(e.target).is(".editFooter *")) {
+                const cacheListId=modal.data("cachelistid");
+                if ($(e.target).is(".btnCancel")){
+                    toggleEdit(modal, false);
+                } else if ($(e.target).is(".btnDelete")){
+                    const selectedWorks=$(".formContainerIn .itemModule.selected", modal);
+                    if (selectedWorks.length==0) return;
+                    const selectedWorkIds=selectedWorks.map((ind,obj)=>$(obj).data("workid")).toArray();
+                    await deleteFromCacheList(cacheListId, selectedWorkIds);
+                    toggleEdit(modal, false);
+                    await showCacheList();
+                }else if ($(e.target).is(".btnRenameCacheList")){
+                    let lists=await getSyncStorage({ lists: JSON.stringify({}) }).then(d=>JSON.parse(d.lists));
+                    const newName="cache_"+$("#editMyListName").val();
+                    lists[cacheListId].name=newName;
+                    await setSyncStorage({lists:JSON.stringify(lists)});
+                    remakeWorksOfCacheListModal(cacheListId);
+                    toggleEdit(modal, false);
+                    await showCacheList();
+                }
             }
         }
     })
 
     const observer = new MutationObserver(function (records) {
         for (const record of records) {
-            const attrVal = $(record.target).attr(record.attributeName);
             if (record.attributeName == "class") {
+                const attrVal = $(record.target).attr(record.attributeName);
                 $(".mypageHeader div.btnOpenAddMyListArea").css({ visibility: attrVal.indexOf("editMode") != -1 ? "visible" : "hidden" })
+            }
+            if (record.type == "childList") {
+                $("html").css({ "overflow-y": $("body modal").length > 0 ? "hidden" : "" })
             }
         }
     });
-    const config = { attributes: true };
+    const config = { attributes: true, childList: true };
     observer.observe($("body")[0], config);
 })
 
 
 // ----------------- edit List --------------------
 
-async function copyList() {
-    const sharelistIds = $(".contentsWrapper .itemWrapper .itemModule.selected").map((ind, obj) => $(obj).data("sharelistid")).toArray();
-    const lists = await Promise.all(sharelistIds.map(async sharelistId =>
-        await fetch(window.COMMON.RESTAPI_ENDPOINT.getWorkFromShareList + "?shareListId=" + sharelistId)
+async function copyList(IsCached) {
+    const shareListIds = $(".contentsWrapper .itemWrapper .itemModule.selected>input.shareListId").map((ind, obj) => $(obj).val()).toArray();
+    const lists = await Promise.all(shareListIds.map(async shareListId =>
+        await fetch(window.COMMON.RESTAPI_ENDPOINT.getWorkFromShareList + "?shareListId=" + shareListId)
             .then(d => d.json())
             .then(d => d.data)));
     const workIds = Array.from(new Set(lists.map(d => d.workList.map(work => work.workId)).flat()));
     //console.log(lists, workIds);
-    await autoSplitedList(lists[0].shareListName, workIds);
+    await autoSplitedList(lists[0].shareListName, workIds, IsCached);
 }
 
-async function autoSplitedList(coreName, workIds) {
+async function autoSplitedList(coreNameIn, workIds, IsCached = false) {
+    //console.log(workIds, IsCached)
     const cycleNum = Math.floor(workIds.length / 50 + 1);
-    const dateNum=Date.now() - 0;
-    [...Array(cycleNum).keys()].map(cycle=>{
-        const listName = coreName.slice(0, 10) + "__" + (dateNum+cycle).toString("16").slice(5, 20);
-        createShareList(listName, true, "");
-    })
-    setTimeout(async function () {
-        const sharelists = await fetch(window.COMMON.RESTAPI_ENDPOINT.getShareList).then(d => d.json());
+    const coreName = (IsCached ? "cache_" : "") + coreNameIn.replace(/^cache_/, "");
+    const dateNum = Date.now() - 0;
+    if (IsCached) {
+        const lists_res = await createNewList(coreName);
+        let lists = lists_res.lists;
+        lists[lists_res.listId].workIds.push(...workIds);
+        await setSyncStorage({ lists: JSON.stringify(lists) });
+    }
+    else {
+        const sharelistIds = Promise.all([...Array(cycleNum).keys()].map(async cycle => {
+            const listName = coreName.slice(0, 10) + "__" + (dateNum + cycle).toString("16").slice(5, 20);
+            return await createNewList(listName).then(d => d.listId);
+        }))
         for (const cycle of [...Array(cycleNum).keys()]) {
+            const sharelistId = sharelistIds[cycle];
             const workIdsTmp = workIds.slice(50 * cycle, 50 * (cycle + 1));
             //console.log(sharelists)
-            const sharelistId = sharelists.data.shareList[cycle].shareListId;
+            //const sharelistId = sharelists.data.shareList[cycle].shareListId;
             //console.log(sharelists, listName);
-            for (const workId of workIdsTmp){
-                editMyList(workId, [sharelistId], []);
+            for (const workId of workIdsTmp) {
+                await _editMyList(workId, [sharelistId], []);
             }
         }
-    }, 100);
+    }
+}
 
+async function deleteFromCacheList(cacheListId, workIds){
+    let lists=await getSyncStorage({ lists: JSON.stringify({}) }).then(d=>JSON.parse(d.lists));
+    if (!lists[cacheListId]) return;
+    lists[cacheListId].workIds=lists[cacheListId].workIds.filter(workId=>workIds.indexOf(workId-0)==-1);
+    await setSyncStorage({ lists: JSON.stringify(lists) });
+    remakeWorksOfCacheListModal(cacheListId);
+}
+
+// ----------------- lists in cache ----------------
+
+async function createNewList(listName = "") {
+    if (/^cache_/.test(listName)) {
+        const items = await getSyncStorage({ lists: JSON.stringify({}) });
+        let lists = JSON.parse(items.lists);
+        const listId = `list_${Date.now()}`;
+        const newList = { madeDate: Date.now(), name: listName, exportIds: [], workIds: [], listId: listId };
+        lists[listId] = newList;
+        chrome.storage.sync.set({ lists: JSON.stringify(lists) });
+        return { listId, lists };
+    } else {
+        return await _createShareList(listName, true, "").then(d => Object({ listId: d.shareListId }));
+    }
+}
+
+async function deleteCacheList(selectedCacheIds) {
+    let lists = await getSyncStorage({ lists: JSON.stringify({}) }).then(items => JSON.parse(items.lists));
+    selectedCacheIds.forEach(key => delete lists[key]);
+    //console.log(lists)
+    await setSyncStorage({ lists: JSON.stringify(lists) });
+}
+
+async function addWorkToLists(workIds, listsDic){
+    const sharelistIds=listsDic.sharelistIds;
+    const cachelistIds=listsDic.cachelistIds;
+    console.log(sharelistIds, cachelistIds, workIds)
+    if (sharelistIds.length>0){
+        for (const workId of workIds) {
+            const res = await fetch(window.COMMON.RESTAPI_ENDPOINT.getShareList + "?workId=" + workId).then(d => d.json());
+            const sharelistStatuses = res.data.shareList;
+            const sharelistLimited = sharelistStatuses.filter(d => d.status == 0 && sharelistIds.indexOf(d.shareListId) != -1);
+            if (sharelistLimited.length == 0) continue;
+            await _editMyList(workId, sharelistLimited.map(d => d.shareListId), []);
+        };
+    }
+    if (cachelistIds.length>0){
+        let lists=await getSyncStorage({ lists: JSON.stringify({}) }).then(d=>JSON.parse(d.lists));
+        for (const cachelistId of cachelistIds){
+            if (!lists[cachelistId]) continue;
+            console.log(lists[cachelistId])
+            lists[cachelistId].workIds=Array.from(new Set([...lists[cachelistId].workIds, ...workIds]));
+        }
+        await setSyncStorage({ lists: JSON.stringify(lists) });
+    }
 }
 
 // ------------------ initial --------------------
 
-function addInitialButton(url_mode) {
-    const editArea = $("div.editFooterIn");
+async function addInitialButton(url_mode, area=$(".pageWrapper")) {
+    const editArea = $("div.editFooterIn", area);
+    $(`a.btnChEx1`, editArea).each((ind, obj)=>$(obj).remove());
     if (["viewList"].indexOf(url_mode) != -1) {
         const copyBtn = $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnCopyList" })
-            .append("コピー/合成");
-        editArea.append(copyBtn);
-        $("a.btnDelete").css({ width: "27%", float: "left" });
-        $("a.btnCancel").css({ width: "27%" });
+            .append("合成").css({ width: "15%" });
+        const copyCacheBtn = $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnCopyList aboutCache" })
+            .append("合成(Cache)").css({ width: "20%" });
+        const deleteBtn = $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnDeleteCacheList" })
+            .append("削除(Cache)").css({ width: "15%", float: "right" });
+        editArea.append(copyCacheBtn).append(deleteBtn).append(copyBtn);
+        $("a.btnDelete", editArea).css({ width: "13%", float: "left" });
+        $("a.btnCancel", editArea).css({ width: "13%" });
+        await showCacheList();
+    } else if (["editCacheList"].indexOf(url_mode) != -1) {
+        const addBtn = $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnOpenAddMyList" })
+            .append("マイリストに追加").css({ width: "17%" });
+        const exportBtn = $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnExportToMyList" })
+            .append("公式マイリスト出力").css({ width: "20%" });
+        const renameBtn = $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnRenameCacheList" })
+            .append("名前変更").css({ width: "15%" });
+
+        editArea.append(addBtn).append(exportBtn).append(renameBtn);
+        $("a.btnDelete", editArea).css({ width: "13%", float: "left" });
+        $("a.btnCancel", editArea).css({ width: "13%" });
     } else {
         const addBtn = $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnOpenAddMyList" })
             .append("マイリストに追加");
         editArea.append(addBtn);
-        $("a.btnDelete").css({ width: "27%", float: "left" });
-        $("a.btnCancel").css({ width: "27%" });
+        $("a.btnDelete", editArea).css({ width: "27%", float: "left" });
+        $("a.btnCancel", editArea).css({ width: "27%" });
     }
 }
 
+async function showCacheList(container=$(".pageWrapper")) {
+    $("div.openCacheList.itemModule").each((ind, obj)=>$(obj).remove());
+    const cacheLists = await getSyncStorage({ lists: JSON.stringify({}) }).then(items => JSON.parse(items.lists));
+    Object.values(cacheLists).forEach(cacheList => {
+        const wrapper = $("div.itemWrapper", container);
+        const pngHTMLs = (cacheList.workIds || []).slice(0, 4)
+            .map(workId => `https://cs1.anime.dmkt-sp.jp/anime_kv/img/${workId.slice(0, 2)}/${workId.slice(2, 4)}/${workId.slice(4, 5)}/${workId}_1_5.png`)
+            .map(link => `<img class="  lazyloaded" src="${link}" data-src="${link}" alt="パッケージ画像">`)
+            .concat(Array(4).fill(`<img class="spacer" src="/img/img_lazySpace.gif">`));
+        const itemHTML = `<div class="itemModule openCacheList mylist " data-cachelistid="${cacheList.listId}">
+        <input type="hidden" name="cacheListId" value="${cacheList.listId}" class="cacheListId">
+        <section class="clearfix">
+        <a href="javascript:void(0);" class="openCacheList" data-cachelistid="${cacheList.listId}">
+        <div class="thumbnailContainer">
+        <div class="imgWrap16x9 grid2x2">
+        ${pngHTMLs.slice(0, 4).join("\n")}
+        </div>
+        </div>
+        <h3 class="line2">
+        <span class="ui-clamp webkit2LineClamp">${cacheList.name}</span>
+        <p class="count">${cacheList.workIds.length}</p>
+        </h3>
+        </a>
+        </section>
+        <div class="selectedImg">マイリストを削除</div>
+        </div>`
+        wrapper.append(itemHTML);
+    })
+}
+
+function toggleEdit(container, editMode){
+    // toggle Edit mode for new Module
+    $("body").toggleClass("editMode");
+    $(".itemModule", $(container)).map((ind, obj) => {
+        $(obj).toggleClass("edit");
+        if (!editMode) $(obj).removeClass("selected").removeClass("notSelected");
+        else $(obj).addClass("notSelected");
+    });
+}
 
 // ------------------ about Modal -------------------
 
-async function addMylistModal() {
-    const workIds = $(".contentsWrapper .itemWrapper .itemModule.selected>input").map((ind, obj) => $(obj).val());
+const work2item = async (workId) => {
+    const workInfo = await fetch(window.COMMON.RESTAPI_ENDPOINT.partInfo + `?partId=${workId}001`).then(d => d.json());
+    //console.log(workInfo)
+    return `
+    <div class="itemModule list mybest" data-workid="${workId}">
+        <input type="hidden" name="workId" value="${workId}" class="workId">
+        <section class="itemModuleSection">
+            <a href="https://anime.dmkt-sp.jp/animestore/ci_pc?workId=${workId}" class="itemModuleIn">
+                <div class="thumbnailContainer">
+                    <div class="imgWrap16x9"><img class="lazyloaded verticallyLong"
+                            src="https://cs1.anime.dmkt-sp.jp/anime_kv/img/${workId.slice(0, 2)}/${workId.slice(2, 4)}/${workId.slice(4, 5)}/${workId}_1_5.png"
+                            data-src="https://cs1.anime.dmkt-sp.jp/anime_kv/img/${workId.slice(0, 2)}/${workId.slice(2, 4)}/${workId.slice(4, 5)}/${workId}_1_5.png"
+                            width="288" height="162" alt="${workInfo.workTitle}_1"></div>
+                </div>
+                <div class="textContainer">
+                    <div class="textContainerIn">
+                        <h3 class="line2"><span class="ui-clamp webkit2LineClamp">${workInfo.workTitle}</span></h3>
+                    </div>
+                    <!--<ul class="iconContainer">
+                        <li><i class="icon iconTextComplete"></i></li>
+                    </ul>-->
+                </div>
+            </a>
+            <div class="addMyList edit listen" data-workid="${workId}"><input type="checkbox"
+                checked="checked"><label>編集</label></div>
+            <ul class="option"></ul>
+        </section>
+        <div class="selectedImg">選択</div>
+        <!--<div class="sortBtnArea onlyLegacySp">
+            <div class="btnSort btnSortUp">上へ</div>
+            <div class="btnSort btnSortDown">下へ</div>
+        </div>
+        <div class="dragBtnArea notLegacySp">
+            <div class="btnDrag"></div>
+        </div>-->
+    </div>`
+}
+
+async function viewWorksOfCacheListModal(cacheListId) {
+    const lists = await getSyncStorage({ lists: JSON.stringify({}) }).then(items => JSON.parse(items.lists));
+    const cacheList = lists[cacheListId];
+    if (!cacheList) return;
+
+    const modalId = `DIALOG${Date.now()}`
+    const modalHTML = `
+    <modal id="${modalId}" class="modalDialog modalDialogChEx viewCacheListDialog" data-cachelistid="${cacheListId}" style="overflow-y:scroll;">
+    <div class="modalOverlay" style="overflow-y:hidden;"></div>
+    <div class="generalModal" style="left: 3vw; width: 85vw; top:2vh;height:90vh;overflow-y:scroll;">
+        <div class="titleArea">
+            <div class="title">Cache_マイリスト</div>
+            <div class="closeBtn btnCloseModal"><i class="icon iconCircleClose"></i></div>
+        </div>
+        <div class="formContainerWrapper">
+            <div class="formContainerCover"></div>
+            <div class="formContainerIn webkitScrollbar vertical">
+                <div class="mypageHeader mybest clearfix">
+                    <h2 id="myListName" class="listTitle visible"><span class="text">${cacheList.name}</span><span class="count">${cacheList.workIds.length}</span></h2>
+                    <div class="editHeader">
+                        <form>
+                            <label for="editMyListName">cache_</label>
+                            <input id="editMyListName" type="text" placeholder="好きな名前を入力して下さい" value="${cacheList.name.replace(/^cache_/, '')}">
+                        </form>
+                    </div>
+                    <script>
+                        $("#editMyListName").on("keydown", function (e) {
+                            if ((e.which && e.which === 13) || (e.keyCode && e.keyCode === 13)) {
+                                return false;
+                            } else {
+                                return true;
+                            }
+                        });
+                    </script>
+                    <div class="btnSelectToggle formContainer">
+                        <div class="checkboxInnerwrap clearfix">
+                            <div class="checkboxList"><input type="checkbox"><label><span>すべて選択</span><span
+                                        class="count">${cacheList.workIds.length}</span></label></div>
+                        </div>
+                    </div>
+                    <div class="btnEditCancel"><a href="javascript:void(0);">キャンセル<i class="icon iconEdit"></i></a></div>
+                    <div class="btnEdit"><a href="javascript:void(0);">編集する<i class="icon iconEdit"></i></a></div>
+                </div>
+                <div id="listContainer" class="itemWrapper clearfix">
+                    ${await Promise.all(cacheList.workIds.map(async workId => await work2item(workId))).then(d => d.join("\n"))}
+                </div>
+                <div id="loader" class="loader" style="display: none;"><span></span></div>
+                <div class="btnSubscript">
+                    <div class="btnArea">
+                        <a href="mpa_mylists" class="btnPageBack"><i class="icon iconArrowOrangeLeft"></i>マイリスト一覧へ</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    </modal>`
+    $("body").append(modalHTML);
+    const modalGeneral=$(`#${modalId} .generalModal`);
+    modalGeneral.append($(".editFooter").clone());
+    addInitialButton("editCacheList", modalGeneral);
+    $($(`#${modalId} .modalOverlay`)).height(Math.max(modalGeneral.height()+250, window.innerHeight));
+}
+
+async function remakeWorksOfCacheListModal(cacheListId){
+    const lists = await getSyncStorage({ lists: JSON.stringify({}) }).then(items => JSON.parse(items.lists));
+    const cacheList = lists[cacheListId];
+    if (!cacheList) return;
+
+    const modal=$("modal.modalDialogChEx");
+    $(".itemWrapper", modal).empty();
+    $(".itemWrapper", modal).append(await Promise.all(cacheList.workIds.map(async workId => await work2item(workId))).then(d => d.join("\n")));
+    $("#myListName span.text").html(cacheList.name);
+    $("#myListName span.count").html(cacheList.workIds.length);
+
+}
+
+
+async function addMylistModal(container=$(".pageWrapper")) {
+    const workIds = $(".itemModule.selected>input", container).map((ind, obj) => $(obj).val());
     if (workIds.length == 0) return;
-    const shareList = await fetch(window.COMMON.RESTAPI_ENDPOINT.getShareList).then(d => d.json()).then(res => res.data.shareList);
+    const shareLists = await fetch(window.COMMON.RESTAPI_ENDPOINT.getShareList).then(d => d.json()).then(res => res.data.shareList);
+    const cacheLists = await getSyncStorage({ lists: JSON.stringify({}) }).then(items => JSON.parse(items.lists))
     const modalId = `DIALOG${Date.now()}`
     const modalAddMyList = `
-    <modal id="${modalId}" class="modalDialog addMyListDialog" style="">
+    <modal id="${modalId}" class="modalDialog modalDialogChEx addMyListDialog" style="overflow-y:scroll;">
     <div class="modalOverlay"></div>
-    <div class="generalModal" style="left: 258px; top: 106px;">
+    <div class="generalModal" style="left: 258px; top: 106px; width:50vw;overflow-y:scroll;">
         <div class="titleArea">
             <div class="title">マイリストに追加</div>
-            <div class="closeBtn btnCloseModal"><a href="javascript:$('html').css({'overflow-y':''});$('#${modalId}').remove();"><i class="icon iconCircleClose"></i></a></div>
+            <div class="closeBtn btnCloseModal"><i class="icon iconCircleClose"></i></div>
         </div>
         <div class="modalAddMyListIn">
             <p>各リストに作品を追加することができます</p>
@@ -155,24 +432,43 @@ async function addMylistModal() {
                     <div class="formContainerCover"></div>
                     <div class="formContainerIn webkitScrollbar vertical">
                         <form>
-                            ${shareList.map((list, ind) => `
-                                <div class="checkboxList clearfix">
-                                    <a href="javascript:$('.sharelist_${ind}').toggleClass('on');">
-                                        <div class="checkbox sharelistId sharelist_${ind}" data-sharelistid="${list.shareListId}">
-                                            <i class="sharelist_${ind}"></i>
-                                        </div>
-                                        <div class="label">
-                                            <p class="title line1">
-                                                <span>${list.shareListName}</span>
-                                                <span class="comment onlyMax">最大50件登録済みです</span>
-                                                <span class="comment onlyAdded">すでに登録済みです</span>
-                                                <span class="comment onlyDel">このリストから削除されます</span>
-                                                <span class="comment onlyAdd">このリストに追加されます</span>
-                                            </p>
-                                            <span class="count">(${list.count})</span>
-                                        </div>
-                                    </a>
-                                </div>`).join("\n")}
+                            ${shareLists.map((list, ind) => `
+                            <div class="checkboxList clearfix">
+                                <a href="javascript:$('.sharelist_${ind}').toggleClass('on');">
+                                    <div class="checkbox sharelistId sharelist_${ind}" data-sharelistid="${list.shareListId}">
+                                        <i class="sharelist_${ind}"></i>
+                                    </div>
+                                    <div class="label">
+                                        <p class="title line1">
+                                            <span>${list.shareListName}</span>
+                                            <span class="comment onlyMax">最大50件登録済みです</span>
+                                            <span class="comment onlyAdded">すでに登録済みです</span>
+                                            <span class="comment onlyDel">このリストから削除されます</span>
+                                            <span class="comment onlyAdd">このリストに追加されます</span>
+                                        </p>
+                                        <span class="count">(${list.count})</span>
+                                    </div>
+                                </a>
+                            </div>`).join("\n")}
+                            ${Object.values(cacheLists).map((list, ind) => `
+                            <div class="checkboxList clearfix">
+                                <a href="javascript:$('.cachelist_${ind}').toggleClass('on');">
+                                    <div class="checkbox cachelistId cachelist_${ind}" data-cachelistid="${list.listId}">
+                                        <i class="cachelist_${ind}"></i>
+                                    </div>
+                                    <div class="label">
+                                        <p class="title line1">
+                                            <span>${list.name}</span>
+                                            <span class="comment onlyMax">最大50件登録済みです</span>
+                                            <span class="comment onlyAdded">すでに登録済みです</span>
+                                            <span class="comment onlyDel">このリストから削除されます</span>
+                                            <span class="comment onlyAdd">このリストに追加されます</span>
+                                        </p>
+                                        <span class="count">(${list.workIds.length})</span>
+                                    </div>
+                                </a>
+                            </div>`).join("\n")}
+
                         </form>
                         <div><a href="javascript:void(0);" class="btnArea btnOpenNewMyList">新しいマイリストを作成</a><i class="icon iconCircleAdd"></i></div>
                     </div>
@@ -185,6 +481,7 @@ async function addMylistModal() {
     </div>
     </modal>`
     $("body").append(modalAddMyList);
+    $($(`#${modalId} .modalOverlay`)).height(Math.max($(`#${modalId} .generalModal`).height(), window.innerHeight ));
     return modalId;
 }
 
@@ -215,15 +512,17 @@ async function remakeAddMyListModal() {
 function newMyListModal() {
     const modalId = `DIALOG${Date.now()}`;
     const modalNewMyList = `
-    <modal id="${modalId}" class="modalDialog newMyListDialog" style="">
+    <modal id="${modalId}" class="modalDialog modalDialogChEx newMyListDialog" style="">
     <div class="modalOverlay"></div>
     <div class="generalModal" style="left: 258px; top: 229.6px;">
         <div class="titleArea">
             <div class="title">新しいマイリストを作成</div>
-            <div class="closeBtn btnCloseModal"><a href="javascript:$('#${modalId}').remove();"><i class="icon iconCircleClose"></i></a></div>
+            <div class="closeBtn btnCloseModal"><i class="icon iconCircleClose"></i></div>
         </div>
         <div class="modalNewMyListIn">
             <p>好きな名前のリストを作って作品を追加できます(最大20件まで)</p>
+            <br>
+            <p><code>cache_</code>から始まる名前なら、拡張機能内リストとして保存されます。</p>
             <form><input id="newMyListName" type="text" placeholder="好きな名前を入力して下さい"></form>
         </div>
         <script>$("#newMyListName").on("keydown", function(e) {if ((e.which && e.which === 13) || (e.keyCode && e.keyCode === 13)) {return false;} else {return true;}});</script>
@@ -232,27 +531,33 @@ function newMyListModal() {
         </div>
     </div>`
     $("body").append(modalNewMyList);
+    $($(`#${modalId} .modalOverlay`)).height($(`#${modalId} .generalModal`).height());
     return modalId;
 
 }
 
+//---------others -----------------
+
+const getSyncStorage = (key = null) => new Promise(resolve => {
+    chrome.storage.sync.get(key, resolve);
+});
+
+const setSyncStorage = (key = null) => new Promise(resolve => {
+    chrome.storage.sync.set(key, resolve);
+});
+
 //------------------ modified from from common.js -------------
 
 // 作品のマイリスト登録状況を編集(追加削除)する
-function editMyList(workId, regShareListIdList, delShareListIdList, isEdit, callback) {
-    restPost(window.COMMON.RESTAPI_ENDPOINT.registWorkToShareList, {
+async function _editMyList(workId, regShareListIdList, delShareListIdList, isEdit) {
+    return await _restPost(window.COMMON.RESTAPI_ENDPOINT.registWorkToShareList, {
         workId: workId,
         regShareListIdList: regShareListIdList,
         delShareListIdList: delShareListIdList
-    }).done(function () {
-        if (typeof callback === "function") {
-            callback(true);
-        }
-    }).fail(function (errorCode) {
+    }).catch(function (errorCode) {
         switch (errorCode) {
             case "22": // 公開リスト作品件数超過
                 window.COMMON.showToast("公開リスト作品件数が超過しました");
-                //editMyList(workId, regShareListIdList, delShareListIdList, isEdit, callback)
                 break;
             case "23": // マイリスト作品件数超過
                 window.COMMON.showToast("マイリストの上限数に達しましたので、設定できません");
@@ -291,7 +596,7 @@ function editMyList(workId, regShareListIdList, delShareListIdList, isEdit, call
 }
 
 
-function createShareList(shareListName, isEdit, workId, callback) {
+async function _createShareList(shareListName, isEdit, workId) {
     if (shareListName) {
         // サロゲートペア文字存在チェック
         if (shareListName.match(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g)) {
@@ -324,15 +629,11 @@ function createShareList(shareListName, isEdit, workId, callback) {
             return;
         }
 
-        restPost(window.COMMON.RESTAPI_ENDPOINT.registShareList, {
+        return await _restPost(window.COMMON.RESTAPI_ENDPOINT.registShareList, {
             "shareListId": null,
             "shareListName": shareListName,
             "updateType": "1"
-        }).done(function () {
-            if (typeof callback === "function") {
-                callback(true);
-            }
-        }).fail(function (errorCode) {
+        }).catch(function (errorCode) {
             switch (errorCode) {
                 case "22": // 公開リスト件数超過
                     window.COMMON.showToast("上限数に達しましたので、作成できません");
@@ -358,28 +659,51 @@ function createShareList(shareListName, isEdit, workId, callback) {
                     });
                     break;
                 default:
+                    console.log(errorCode)
                     window.COMMON.showToast("エラーが発生しました");
                     break;
             }
             if (typeof callback === "function") {
-                callback(false);
+                return callback(false);
             }
         });
     } else {
         window.COMMON.showToast("名前が入力されていません");
         if (typeof callback === "function") {
-            callback(false);
+            return callback(false);
         }
     }
 }
 
+_restPost = async function (url, json) {
+    const headers = {
+        "Content-Type": "application/json",
+        timeout: window.COMMON.API_WEB_TIMEOUT
+    };
+    const opts = { method: "post", body: JSON.stringify(json), cache: "no-cache", headers: headers };
+    return await fetch(url, opts)
+        .then(resIn => {
+            return (resIn.ok) ? resIn.json() : {}
+        }) //dataがnullの場合の回避
+        .then(res => {
+            if (res.resultCd === "00" || res.resultCd === "01") {
+                return res.data;
+            } else {
+                return ((res.error) ? res.error.code : "unknown");
+            }
+        }).catch(errorMessage => {
+            console.log(errorMessage);
+        });
+};
 
 // -------------- from common.js ----------------
 
-restPost = function (url, json) {
+
+/* 
+restPost2 = function (url, json) {
     var deferred = new $.Deferred();
     var func = function (dfd) {
-        var args = (typeof url === "string") ? { "url": url, "data": JSON.stringify(json) } : url;
+        var args = (typeof url === "string") ? {"url": url, "data": JSON.stringify(json)} : url;
         var param = $.extend({
             type: "post",
             contentType: "application/json",
@@ -389,7 +713,7 @@ restPost = function (url, json) {
             timeout: window.COMMON.API_WEB_TIMEOUT
         }, args);
         var count = 0;
-        var self = function () {
+        var self = function() {
             if (!param || !param.url) {
                 window.setTimeout(function () {
                     dfd.reject("empty url");
@@ -397,6 +721,7 @@ restPost = function (url, json) {
                 return;
             }
             $.ajax(param).done(function (data) {
+                //console.log(data)
                 data = data || {}; //dataがnullの場合の回避
                 if (data.resultCd === "00" || data.resultCd === "01") {
                     dfd.resolve(data.data);
@@ -420,7 +745,7 @@ restPost = function (url, json) {
     func(deferred)();
     return deferred.promise();
 };
-
+*/
 
 window.COMMON = {
     cookieMap: {},			// cookieをオブジェクト形式で保存したもの
@@ -558,7 +883,10 @@ $.extend(true, window.COMMON.RESTAPI_ENDPOINT, window.COMMON.RESTAPI_OLD_ENDPOIN
 $.extend(true, window.COMMON.RESTAPI_ENDPOINT, window.COMMON.RESTAPI_JSONP_ENDPOINT);
 
 
-
+window.COMMON.showToast = function (text) {
+    alert(text);
+}
+/*
 window.COMMON.showToast = function (text) {
     if (!toastQueue && typeof $.showToast === "function") {
         $.showToast(text);
@@ -584,4 +912,4 @@ window.COMMON.showToast = function (text) {
             toastQueue.push(text);
         }
     }
-};
+};*/

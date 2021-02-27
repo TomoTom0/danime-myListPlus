@@ -1,30 +1,4 @@
-$(function () {
-    headerArea = $(".mypageHeader")
-    btnArea = $("<div>", { class: "btnArea btnOpenAddMyList", style: "display:inline-block;position:relative;top:-6px;vertical-align:middle;padding:0;visibility:hidden;" })
-    addBtn = $("<a>", { href: "javascript:void(0)", class: "btn" }).append("マイリストに追加する")
-    headerArea.append(btnArea.append(addBtn))
-})
 
-document.addEventListener("click", async function (e) {
-    const IsEditMode = ($("body").attr("class").indexOf("editMode") != -1);
-    if ($(e.target).attr("class")){
-        if ($(e.target).attr("class").indexOf("btnEdit") != -1 && !IsEditMode) {
-            $(".mypageHeader div.btnOpenAddMyList").css({ visibility: "visible" })
-        } else if ($(e.target).attr("class").indexOf("btnEditCancel") != -1 && IsEditMode) {
-            $(".mypageHeader div.btnOpenAddMyList").css({ visibility: "hidden" })
-        } else if ($(e.target).attr("class").indexOf("btnOpenAddMyList") != -1 && IsEditMode) {
-            await addMylistModal();
-        } else if ($(e.target).attr("class").indexOf("btnAddMyList") != -1) {
-            const workIds=$(".contentsWrapper .itemWrapper .itemModule.selected input").map((ind,obj)=>$(obj).val());
-            const sharelistIds=$(".sharelistId.on").map((ind,obj)=>$(obj).data("sharelistid")).toArray();
-            for (const  workId of workIds) {
-                editMyList(workId, sharelistIds, []);
-            };
-            $("modal.addMyListDialog").remove();
-            $("body").toggleClass("editMode");
-        }
-    }
-})
 
 // 作品のマイリスト登録状況を編集(追加削除)する
 function editMyList (workId, regShareListIdList, delShareListIdList, isEdit, callback) {
