@@ -1,5 +1,9 @@
 
 
+lists=[{count: 50,
+shareListId: "47q7GzYJzMQsT2cy",
+shareListName: "good__bbb51e"}]
+
 // 作品のマイリスト登録状況を編集(追加削除)する
 function editMyList (workId, regShareListIdList, delShareListIdList, isEdit, callback) {
     window.COMMON.restPost(window.COMMON.RESTAPI_ENDPOINT.registWorkToShareList, {
