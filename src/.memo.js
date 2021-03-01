@@ -1,4 +1,12 @@
+await Promise.all([a].map(async listId=>await fetch(window.COMMON.RESTAPI_ENDPOINT.getWorkFromShareList + `?shareListId=${listId}`)
+    .then(d => d.json())
+    .then(d => d.data.workList.map(work=>work.workId))))
 
+a="47q7GzYJzMQsT2cy"
+b=await Promise.all([a].map(async (listId, ind)=>Object({[ind]:await fetch(window.COMMON.RESTAPI_ENDPOINT.getWorkFromShareList + `?shareListId=${listId}`)
+        .then(d => d.json())
+        .then(d => d.data.workList.map(work=>work.workId))})))
+    .then(d=>Object.assign(...d))
 
 lists=[{count: 50,
 shareListId: "47q7GzYJzMQsT2cy",

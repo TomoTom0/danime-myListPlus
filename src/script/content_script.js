@@ -1,4 +1,6 @@
 ﻿const GLOBAL_cache_prefix = "cache_";
+const GLOBAL_listName_sep = "@@";
+
 
 const obtainUrlMode = () => {
     const url_mode = (Object.entries({
@@ -40,11 +42,13 @@ $(async function () {
             const newMyListName = $("#newMyListName").val();
             await createNewList(newMyListName);
             $(`modal.newMyListDialog`).remove();
+            // 告知modal: 新しいマイリストが作成されました。
             await remakeAddMyListModal();
         } else if ($(e.target).is(".editFooter .btnCopyList")) {
             await copyList($(e.target).is(".aboutCache"));
             toggleEdit(container, false);
-            location.reload();
+            // 告知modal: ……作品が含まれる「……」が作成されました。
+            if (! $(e.target).is(".aboutCache")) location.reload();
         } else if ($(e.target).is(".editFooter .btnDeleteCacheList")) {
             const selectedCacheLists = $(".contentsWrapper .itemWrapper .itemModule.selected>input.cacheListId");
             if (selectedCacheLists.length == 0) return;
@@ -68,6 +72,7 @@ $(async function () {
                 const cachelistIds = $(".cachelistId.on", modal).map((ind, obj) => $(obj).data("cachelistid").toString()).toArray();
                 await addWorkToLists(workIds, { cache: cachelistIds, share: sharelistIds });
                 $("modal.addMyListDialog").remove();
+                // 告知modal: ……作品が追加されました。作品数が上限に達していたので、自動的に「……」が作成されました。
                 toggleEdit(container, false);
                 if (["viewList"].indexOf(url_mode) != -1) await showCacheList();
                 console.log("add works to my list");
@@ -99,6 +104,7 @@ $(async function () {
                     if (selectedWorks.length == 0) return;
                     const selectedWorkIds = selectedWorks.map((ind, obj) => $(obj).data("workid").toString()).toArray();
                     await deleteFromCacheList(cacheListId, selectedWorkIds);
+                    // 告知modal: 「……」から……作品が削除されました。
                     toggleEdit(modal, false);
                     await remakeWorksOfCacheListModal();
                     await showCacheList();
@@ -107,6 +113,7 @@ $(async function () {
                     const newName = GLOBAL_cache_prefix + $("#editMyListName").val();
                     lists[cacheListId].name = newName;
                     await setSyncStorage({ lists: JSON.stringify(lists) });
+                    // 告知modal: ……から……へ名前が変更されました。
                     await remakeWorksOfCacheListModal();
                     toggleEdit(modal, false);
                     await showCacheList();
@@ -127,6 +134,7 @@ $(async function () {
                         "01": async () => Object({ cache: $("modal.viewCacheListDialog").data("cachelistid").toString(), sahre: [] })
                     }
                     await exportList(await obtainExportIds[otherMenuPar](), format);
+                    // 告知modal: ~をふくむ「…….json」がダウンロードされました。
                 } else if ($(e.target).is(".btnImportCacheList")) {
 
                     const inputFiles = await $(".inputImportCacheList", $(e.target).parents(".generalModal")).prop("files");
@@ -148,6 +156,7 @@ $(async function () {
                     toggleEdit(container, false);
                     otherMenuModal.remove();
                     await showCacheList();
+                    // 告知modal: 「…….json」により[……]へ……作品がインポートされました。
                 }
             }
         }
@@ -187,13 +196,13 @@ async function copyList(IsCached) {
             .map(cacheList => cacheList.workIds).flat());
     const workIds = Array.from(new Set([...workIdsShare, ...workIdsCache]));
     //console.log(lists, workIds);
-    await autoSplitedList($("h3 .ui-clamp", selectedLists[0]).text() + `@${new Date().toLocaleDateString().match(/[\d\/]+/)[0]}`, workIds, IsCached);
+    await autoSplitedList($("h3 .ui-clamp", selectedLists[0]).text().replace(RegExp(`${GLOBAL_listName_sep}.*$`), "") + `${GLOBAL_listName_sep}${new Date().toLocaleDateString().match(/[\d\/]+/)}`, workIds, IsCached);
 }
 
 async function autoSplitedList(coreNameIn, workIds, IsCached = false) {
     //console.log(workIds, IsCached)
     const cycleNum = Math.floor(workIds.length / 50 + 1);
-    const coreName = (IsCached ? GLOBAL_cache_prefix : "") + coreNameIn.replace(RegExp(`^${GLOBAL_cache_prefix}`), "");
+    const coreName = (IsCached ? GLOBAL_cache_prefix : "") + coreNameIn.replace(RegExp(`^${GLOBAL_cache_prefix}|${GLOBAL_listName_sep}.*$`, "g"), "");
     const dateNum = Date.now() - 0;
     if (IsCached) {
         const lists_res = await createNewList(coreName);
@@ -202,8 +211,8 @@ async function autoSplitedList(coreNameIn, workIds, IsCached = false) {
         await setSyncStorage({ lists: JSON.stringify(lists) });
     }
     else {
-        const sharelistIds = Promise.all([...Array(cycleNum).keys()].map(async cycle => {
-            const listName = coreName.slice(0, 10) + "__" + (dateNum + cycle).toString().slice(6, 20);
+        const sharelistIds = await Promise.all([...Array(cycleNum).keys()].map(async cycle => {
+            const listName = coreName.replace(RegExp(`${GLOBAL_listName_sep}.*$`), "").slice(0, 10) + GLOBAL_listName_sep + (dateNum + cycle).toString().slice(6, 20);
             return await createNewList(listName).then(d => d.listId);
         }))
         for (const cycle of [...Array(cycleNum).keys()]) {
@@ -227,15 +236,14 @@ async function deleteFromCacheList(cacheListId, workIds) {
 
 async function createNewList(listName = "") {
     if (RegExp(`^${GLOBAL_cache_prefix}`).test(listName)) {
-        const items = await getSyncStorage({ lists: JSON.stringify({}) });
-        let lists = JSON.parse(items.lists);
+        let lists = await getSyncStorage({ lists: JSON.stringify({}) }).then(items=>JSON.parse(items.lists));
         const listId = `${GLOBAL_cache_prefix}${Date.now()}`;
         const newList = { madeDate: Date.now(), name: listName, exportIds: [], workIds: [], listId: listId };
         lists[listId] = newList;
         await setSyncStorage({ lists: JSON.stringify(lists) });
         return { listId, lists };
     } else {
-        return await _createShareList(listName, true, "").then(d => Object({ listId: d.shareListId }));
+        return await _createShareList(listName, true, "").then(d => ({listId:d.shareListId}) );
     }
 }
 
@@ -246,23 +254,38 @@ async function deleteCacheList(selectedCacheIds) {
     await setSyncStorage({ lists: JSON.stringify(lists) });
 }
 
-async function addWorkToLists(workIds, listsDic) {
-    const sharelistIds = listsDic.share;
-    const cachelistIds = listsDic.cache;
-    if (sharelistIds.length > 0) {
-        for (const workId of workIds) {
-            const res = await fetch(window.COMMON.RESTAPI_ENDPOINT.getShareList + "?workId=" + workId).then(d => d.json());
-            const sharelistStatuses = res.data.shareList;
-            const sharelistLimited = sharelistStatuses.filter(d => d.status == 0 && sharelistIds.indexOf(d.shareListId) != -1);
-            if (sharelistLimited.length == 0) continue;
-            await _editMyList(workId, sharelistLimited.map(d => d.shareListId), []);
+async function addWorkToLists(workIdsIn, listsDic) {
+    const shareListIds = listsDic.share;
+    const cacheListIds = listsDic.cache;
+    if (shareListIds.length > 0) {
+        const shareLists = await Promise.all(shareListIds
+            .map(async listId => ({[listId]:await fetch(window.COMMON.RESTAPI_ENDPOINT.getWorkFromShareList + `?shareListId=${listId}`)
+                .then(d => d.json())
+                .then(d => ({workIds :d.data.workList.map(work=>work.workId), name:d.data.shareListName}) )})))
+            .then(dics=>Object.assign(...dics));
+        let shareAddInfos=Object.assign(...shareListIds.map(listId=>({[listId]:{count:shareLists[listId].workIds.length, listId:listId}})));
+        for (const workId of workIdsIn) {
+            const shareListIdsTmp = await Object.entries(shareLists)
+                .reduce(async (acc, kv)=>{
+                    const listId=kv[0];
+                    if (kv[1].workIds.indexOf(workId)!=-1) return acc;
+                    if (shareAddInfos[listId].count%50==0) {
+                        const listName = shareLists[listId].name.replace(RegExp(`${GLOBAL_listName_sep}.*$`), "").slice(0, 10) + GLOBAL_listName_sep + (Date.now()).toString().slice(6, 20);
+                        shareAddInfos[listId].listId=await createNewList(listName).then(d=>d.listId);
+                    }
+                    shareAddInfos[listId].count +=1;
+                    return acc.concat(shareAddInfos[listId].listId)
+                }, []);
+
+            if (shareListIdsTmp.length == 0) continue;
+            await _editMyList(workId, shareListIdsTmp, []);
         };
     }
-    if (cachelistIds.length > 0) {
+    if (cacheListIds.length > 0) {
         let lists = await getSyncStorage({ lists: JSON.stringify({}) }).then(items => JSON.parse(items.lists));
-        for (const cachelistId of cachelistIds) {
-            if (!lists[cachelistId]) continue;
-            lists[cachelistId].workIds = Array.from(new Set([...lists[cachelistId].workIds, ...workIds]));
+        for (const cacheListId of cacheListIds) {
+            if (!lists[cacheListId]) continue;
+            lists[cacheListId].workIds = Array.from(new Set([...lists[cachelistId].workIds, ...workIds]));
         }
         await setSyncStorage({ lists: JSON.stringify(lists) });
     }
@@ -271,21 +294,28 @@ async function addWorkToLists(workIds, listsDic) {
 // ------------------ import / export------------
 
 
-async function exportList(listIds = { cache: {}, share: {} }, formatIn = null) {
+async function exportList(listIds = { cache: [], share: [] }, formatIn = null) {
     const format = formatIn || "json";
     const cacheLists = await getSyncStorage({ lists: JSON.stringify({}) }).then(items => JSON.parse(items.lists));
-    const shareLists = await await fetch(window.COMMON.RESTAPI_ENDPOINT.getShareList).then(d => d.json()).then(res => res.data.shareList);
+    const shareLists = await fetch(window.COMMON.RESTAPI_ENDPOINT.getShareList).then(d => d.json()).then(res => res.data.shareList);
+    const shareWorkIds = await Promise.all(listIds.share
+        .map(async listId => Object({[listId]:await fetch(window.COMMON.RESTAPI_ENDPOINT.getWorkFromShareList + `?shareListId=${listId}`)
+            .then(d => d.json())
+            .then(d => d.data.workList.map(work=>work.workId))})))
+        .then(dics=>Object.assign(...dics));
     const validLists = {
         cache: Object.assign(...Object.values(cacheLists).filter(list => listIds.cache.indexOf(list.listId) != -1)
-            .map(list => Object({ [list.listId]: { name: list.name, workIds: list.workIds } }))),
+            .map(list => Object({ [list.listId]: { name: list.name.replace(RegExp(`^${GLOBAL_cache_prefix}|${GLOBAL_listName_sep}.*$`, "g"), ""), workIds: list.workIds } })) , {}),
         share: Object.assign(...shareLists.filter(list => listIds.share.indexOf(list.shareListId) != -1)
-            .map(list => Object({ [list.shareListId]: { name: list.shareListName, workIds: list.workIds } })))
+            .map(list => Object({ [list.shareListId]: { name: list.shareListName.replace(RegExp(`${GLOBAL_listName_sep}.*$`, "g"), ""),
+                workIds: shareWorkIds[list.shareListId] } })), {} )
     }
 
     const obtainContent = {
         json: lists => JSON.stringify(lists),
-        csv: lists => Object.values(lists).map(list => list.workIds.join(",")).flat(),
-        txt: lists => Object.values(lists).map(list => list.workIds.join("\n")).flat()
+        csv: lists => "# format:csv\n"+Object.values(lists).map(list => list.workIds.join(",")).join("\n"),
+        tsv: lists => "# format:tsv\n"+Object.values(lists).map(list => list.workIds.join("\t")).join("\n"),
+        txt: lists => "# format:txt\n"+Object.values(lists).map(list => list.workIds.join("\n")).join("\n\n")
     }
     const validListsCombined = Object.assign(validLists.cache, validLists.share);
 
@@ -302,12 +332,20 @@ async function exportList(listIds = { cache: {}, share: {} }, formatIn = null) {
 }
 
 async function importList(textIn, listIds = { cache: [], share: [] }) {
-    const obtainParse = (text) => {
+    const obtainJsonParse = (text) => {
         try { return JSON.parse(text); }
         catch { return null; }
     }
-    const jsoned = obtainParse(textIn);
-    if (!jsoned) return;
+    const obtainParse = {
+        csv: text => Object.assign(...split_data(text).filter(d=>/^[^#]/.test(d))
+            .map((line, ind) => Object({["csv"+ind]:{name:"",workIds:line.split(",")}}) )),
+        tsv: text => Object.assign(...split_data(text).filter(d=>/^[^#]/.test(d))
+            .map((line, ind) => Object({["tsv"+ind]:{name:"",workIds:line.split("\t")}}) ))
+    }
+    const jsonContent = obtainJsonParse(textIn);
+    const format = (jsonContent) ? "" : textIn.match(/(?<=^#.*format:)[\S]+/)[0] ;
+    const parsedContent = (format) ? obtainParse[format](textIn) : jsonContent;
+    if (!parsedContent) return;
     const cacheLists = await getSyncStorage({ lists: JSON.stringify({}) }).then(items => JSON.parse(items.lists));
     const shareLists = await await fetch(window.COMMON.RESTAPI_ENDPOINT.getShareList).then(d => d.json()).then(res => res.data.shareList);
     const validListIds = {
@@ -316,21 +354,26 @@ async function importList(textIn, listIds = { cache: [], share: [] }) {
         share: shareLists.filter(list => (listIds.share||[]).indexOf(list.shareListId) != -1)
             .map(list => list.shareListId)
     }
-    for (const list of Object.values(jsoned)) {
+    for (const list of Object.values(parsedContent)) {
         if (!["workIds"].every(key => Object.keys(list).indexOf(key) != -1)) continue;
         const workIds = list.workIds.filter(workId => workId.match(/\d{5}/)) || [];
         if ([...validListIds.cache, ...validListIds.share].length > 0) {
             await addWorkToLists(workIds, validListIds);
             return;
         } else if (listIds.new && listIds.new=="cache") {
-            await autoSplitedList(GLOBAL_cache_prefix + (list.name || `list_${new Date().toLocaleDateString()}`).replace(RegExp(`^${GLOBAL_cache_prefix}`), ""),
+            await autoSplitedList(GLOBAL_cache_prefix + (list.name.replace(RegExp(`${GLOBAL_listName_sep}.*$`), "") || `list${GLOBAL_listName_sep}${new Date().toLocaleDateString()}`)
+                .replace(RegExp(`^${GLOBAL_cache_prefix}`), ""),
                 Array.from(new Set(workIds.map(workId => workId.toString()))), true);
         } else if (listIds.new=="share") {
-            await autoSplitedList(`list_@${new Date().toLocaleDateString().match(/[\d\/]+/)[0]}`,
+            await autoSplitedList(`list${GLOBAL_listName_sep}${new Date().toLocaleDateString().match(/[\d\/]+/)}`,
                 Array.from(new Set(workIds.map(workId => workId.toString()))), false);
         }
     }
+}
 
+function split_data(data) {
+    const split_sep = "__SPLIT__";
+    return data.replace(/\r\n|\r|\n/g, split_sep).split(split_sep);
 }
 
 // ------------------ initial --------------------
@@ -432,7 +475,7 @@ async function otherMenuModal(args = { IsViewList: false, workIsSelected: false 
     const btnExport = $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnExportCacheList" }).append("エクスポート");
     const textExport = $("<p>", { class: "" }).append(obtainVariable[argsStr].textEx);
     const selectExport = $("<select>", { class: "selectExportCacheList" });
-    const optionsContentExport = [["json (インポート可能) で", "json"], ["csv (work Idのみ) で", "csv"], ["text (work Idのみ) で", "txt"]];
+    const optionsContentExport = [["json で", "json"], ["csv で", "csv"], ["tsv で", "tsv"]];
     optionsContentExport.forEach(tv => {
         const option = $("<option>").text(tv[0]).val(tv[1]);
         selectExport.append(option);
@@ -444,7 +487,7 @@ async function otherMenuModal(args = { IsViewList: false, workIsSelected: false 
     const headingImport = $("<p>", { class: "h2", style: "text-align:-10px" }).append($("<b>").append("Import List"));
     const textImport = $("<span>").append(`jsonからCacheリストをインポートします。`);
     const btnImport = $("<a>", { href: "javascript:void(0);", class: "btnChEx1 btnImportCacheList" }).append("インポート");
-    const importFile = $("<input>", { type: "file", accept: "*.json", class: "inputImportCacheList", mulitple: "" });
+    const importFile = $("<input>", { type: "file", accept: ".csv,.json", class: "inputImportCacheList", mulitple: "" });
     const selectImport = $("<select>", { class: "check_importToSelectedList" });
     const optionContentImport = [["cache", "新しいCacheリストに"], ["share", "新しいマイリストに"]];
     const additionnalOptions = obtainVariable[argsStr].optionIm;
