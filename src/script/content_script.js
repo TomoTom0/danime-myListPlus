@@ -30,9 +30,9 @@ $(async function () {
         const expandMode = items.expandMode;
         await expandPage(expandMode);
     })
-    await saveShareLists();
-    await saveFavorites();
+    //await saveFavorites();
     await colorItemWork();
+    await saveShareLists();
 
     document.addEventListener("click", async function (e) {
         const url_mode = obtainUrlMode();
@@ -60,7 +60,7 @@ $(async function () {
             if (["viewFav"].some(d => url_mode.indexOf(d) != -1)) location.reload();
             toggleEdit(container, false);
             if ($(e.target).is("modal.otherMenuDialog *")) $("modal.otherMenuDialog").remove();
-            await saveFavorites();
+            //await saveFavorites();
             // 告知modal: 気になるリストに追加/削除されました。
         } else if ($(e.target).is(".btnNewMyList")) {
             const newMyListName = $("#newMyListName").val();
@@ -595,11 +595,15 @@ async function colorItemWork(wrapperIn=null){
     const itemModules=$(".itemModule.list", wrapper);
     if (itemModules.length==0) return;
 
-    const items=await getSyncStorage({lists:JSON.stringify({}), shareLists:JSON.stringify({}), favWorkIds:[]});
+    const items=await getSyncStorage({lists:JSON.stringify({})});
+    const workIds=$(".itemModule.list").map((ind,obj)=>$("input", obj).val()).toArray();
+    const favWorkIds=await fetch(window.COMMON.RESTAPI_ENDPOINT.getMyListStatus+"?targetFlag=10&workIdList="+workIds.join("_")).then(d=>d.json())
+        .then(d=>d.data.statusList.filter(d=>d.favoriteStatus=="1").map(d=>d.workId))
+    const shareWorkIds=await fetch(window.COMMON.RESTAPI_ENDPOINT.getMyList).then(d=>d.json()).then(d=>d.data.workList.map(d=>d.workId))
     const ListColors={
-         "yellow":items.favWorkIds,
+         "yellow":favWorkIds,
      "lightgreen":Object.values(JSON.parse(items.lists)).map(list=>list.workIds).flat(),
-      "lightblue":Object.values(JSON.parse(items.shareLists)).map(list=>list.workIds).flat()}
+      "lightblue":shareWorkIds}
     console.log(ListColors)
     itemModules.each((ind,obj)=>{
         const workIdTmp=$("input", obj).val();
@@ -625,7 +629,7 @@ async function saveShareLists(shareListIdsIn = null) {
     return shareLists;
 }
 
-async function saveFavorites() {
+/* async function saveFavorites() {
     const urlFav = "https://anime.dmkt-sp.jp/animestore/mpa_fav_pc";
     const htmlContent=await obtainStreamBody(urlFav);
     const itemFirst=$("div.itemWrapper.clearfix .itemModule.list input", htmlContent);
@@ -643,7 +647,7 @@ async function saveFavorites() {
     //const favWorkIds=itemHTMLs.map(wrapper=>$(wrapper).map((ind, obj)=>$(obj).val()).toArray()).flat();
     const favWorkIds=itemHTMLs.map(wrapper=>$(wrapper).map((ind, obj)=>$(obj).val()).toArray()).flat();
     await setSyncStorage({favWorkIds:favWorkIds});
-}
+}*/
 
 
 // ------------------ about Modal -------------------

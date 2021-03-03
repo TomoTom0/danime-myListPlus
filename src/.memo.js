@@ -118,3 +118,11 @@ itemModules.each((ind,obj)=>{
         $(obj).css({background:`linear-gradient(-135deg, ${colors.join(",")}, 60%, white 100%)`})
     }
 })
+
+workIds=$(".itemModule.list").map((ind,obj)=>$("input", obj).val()).toArray();
+res=await fetch(window.COMMON.RESTAPI_ENDPOINT.getMyListStatus+"?targetFlag=10&workIdList="+workIds.join("_")).then(d=>d.json()).then(d=>d.data.statusList)
+favWorkIds=res.filter(d=>d.favoriteStatus=="1").map(d=>d.workId)
+shareWorkIds=res.filter(d=>d.myListStatus!=null).map(d=>d.workId)
+
+res=await fetch(window.COMMON.RESTAPI_ENDPOINT.getMyList).then(d=>d.json()).then(d=>d.data.workList)
+shareWorkIds=res.map(d=>d.workId)
