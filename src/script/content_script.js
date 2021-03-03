@@ -1,6 +1,8 @@
 ﻿const GLOBAL_cache_prefix = "cache_";
 const GLOBAL_listName_sep = "@@";
 
+const colorSettingsDefault = {workIsColored:true}
+const colorSettingsString=JSON.stringify(colorSettingsDefault)
 
 const obtainUrlMode = () => {
     const url_mode = (Object.entries({
@@ -26,12 +28,14 @@ const obtainContainer = (url_mode) => {
 
 $(async function () {
     await addInitialButton(null, null);
-    await getSyncStorage({ expandMode: "" }).then(async items => {
+    await getSyncStorage({ expandMode: "", colorSettings:colorSettingsString }).then(async items => {
         const expandMode = items.expandMode;
         await expandPage(expandMode);
+        const colorSettings=JSON.parse(items.colorSettings);
+        console.log(colorSettings)
+        if (colorSettings.workIsColored) await colorItemWork();
     })
     //await saveFavorites();
-    await colorItemWork();
     await saveShareLists();
 
     document.addEventListener("click", async function (e) {
@@ -95,7 +99,7 @@ $(async function () {
             } else if ($(e.target).is(".btnAddMyList")) {
                 const workIdsTmp = $(".itemModule.list.selected", container).map((ind, obj) => $(obj).data("workid"));
                 const workIds = (workIdsTmp.length > 0) ? workIdsTmp.toArray().map(d => d.toString()) :
-                    $(".itemModule.list.selected>input", container).map((ind, obj) => $(obj).val().toString()).toArray();
+                    $(".itemModule.list.selected>input", container).map((ind, obj) => $(obj).val()).toArray();
                 const sharelistIds = $(".sharelistId.on", modal).map((ind, obj) => $(obj).data("sharelistid").toString()).toArray();
                 const cachelistIds = $(".cachelistId.on", modal).map((ind, obj) => $(obj).data("cachelistid").toString()).toArray();
                 await addWorkToLists(workIds, { cache: cachelistIds, share: sharelistIds });
@@ -572,44 +576,26 @@ async function expandPage(btnClass = "All") {
 
 async function colorItemWork(wrapperIn=null){
     const wrapper=wrapperIn || $(".pageWrapper .itemWrapper");
-
-    const items=await getSyncStorage({lists:JSON.stringify({}), shareLists:JSON.stringify({}), favWorkIds:[]});
-    const ListColors={
-         "yellow":items.favWorkIds,
-     "lightgreen":Object.values(JSON.parse(items.lists)).map(list=>list.workIds).flat(),
-      "lightblue":Object.values(JSON.parse(items.shareLists)).map(list=>list.workIds).flat()}
-    const itemModules=$(".itemModule.list", wrapper);
-    if (itemModules.length==0) return;
-    console.log(ListColors)
-    itemModules.each((ind,obj)=>{
-        const workIdTmp=$("input", obj).val();
-        const colors=Object.entries(ListColors).filter(kv=>kv[1].indexOf(workIdTmp)!=-1).map(kv=>kv[0]);
-        if (colors){
-            $(obj).css({background:`linear-gradient(-135deg, ${colors.join(",")}, 60%, white 100%)`})
-        }
-    })
-}
-
-async function colorItemWork(wrapperIn=null){
-    const wrapper=wrapperIn || $(".pageWrapper .itemWrapper");
     const itemModules=$(".itemModule.list", wrapper);
     if (itemModules.length==0) return;
 
     const items=await getSyncStorage({lists:JSON.stringify({})});
-    const workIds=$(".itemModule.list").map((ind,obj)=>$("input", obj).val()).toArray();
+    const workIdsTmp = $(".itemModule.list", wrapper).map((ind, obj) => $(obj).data("workid"));
+    const workIds = (workIdsTmp.length > 0) ? workIdsTmp.toArray().map(d => d.toString()) :
+        $(".itemModule.list>input", wrapper).map((ind, obj) => $(obj).val()).toArray();
     const favWorkIds=await fetch(window.COMMON.RESTAPI_ENDPOINT.getMyListStatus+"?targetFlag=10&workIdList="+workIds.join("_")).then(d=>d.json())
         .then(d=>d.data.statusList.filter(d=>d.favoriteStatus=="1").map(d=>d.workId))
     const shareWorkIds=await fetch(window.COMMON.RESTAPI_ENDPOINT.getMyList).then(d=>d.json()).then(d=>d.data.workList.map(d=>d.workId))
     const ListColors={
-         "yellow":favWorkIds,
-     "lightgreen":Object.values(JSON.parse(items.lists)).map(list=>list.workIds).flat(),
-      "lightblue":shareWorkIds}
+         "fav":{color:"yellow", workIds:favWorkIds},
+     "cache":{color:"lightgreen", workIds:Object.values(JSON.parse(items.lists)).map(list=>list.workIds).flat()},
+      "share":{color:"lightblue", workIds:shareWorkIds}}
     console.log(ListColors)
     itemModules.each((ind,obj)=>{
-        const workIdTmp=$("input", obj).val();
-        const colors=Object.entries(ListColors).filter(kv=>kv[1].indexOf(workIdTmp)!=-1).map(kv=>kv[0]);
-        if (colors){
-            $(obj).css({background:`linear-gradient(-135deg, ${colors.join(",")}, 60%, white 100%)`})
+        const workIdTmp=workIds[ind];
+        const colors=Object.entries(ListColors).filter(kv=>kv[1].workIds.indexOf(workIdTmp)!=-1).map(kv=>kv[1].color);
+        if (colors && colors.length>0){
+            $(obj).css({background:`linear-gradient(-135deg, ${colors.join(",")}, 70%, white 100%)`})
         }
     })
 }
@@ -832,6 +818,7 @@ async function viewWorksOfCacheListModal(cacheListId) {
     </modal>`
     $("body").append(modalHTML);
     const modalGeneral = $(`#${modalId} .generalModal`);
+    colorItemWork(modalGeneral);
     modalGeneral.append($(".editFooter").clone());
     addInitialButton("viewCacheListDialog", modalGeneral);
     $(`#${modalId} .modalOverlay`).height(Math.max(modalGeneral.height() + 250, window.innerHeight));
@@ -849,6 +836,7 @@ async function remakeWorksOfCacheListModal(cacheListIdIn = null) {
     $(".itemWrapper", modal).append(await Promise.all(cacheList.workIds.map(async workId => await work2item(workId))).then(d => d.join("\n")));
     $("#myListName span.text").html(cacheList.name);
     $("#myListName span.count").html(cacheList.workIds.length);
+    colorItemWork(modal);
 
 }
 
