@@ -12,115 +12,109 @@ lists=[{count: 50,
 shareListId: "47q7GzYJzMQsT2cy",
 shareListName: "good__bbb51e"}]
 
-// 作品のマイリスト登録状況を編集(追加削除)する
-function editMyList (workId, regShareListIdList, delShareListIdList, isEdit, callback) {
-    window.COMMON.restPost(window.COMMON.RESTAPI_ENDPOINT.registWorkToShareList, {
-        workId: workId,
-        regShareListIdList: regShareListIdList,
-        delShareListIdList: delShareListIdList
-    }).done(function () {
-        if (typeof callback === "function") {
-            callback(true);
-        }
-    }).fail(function (errorCode) {
-        switch (errorCode) {
-            case "22": // 公開リスト作品件数超過
-                window.COMMON.showToast("エラーが発生しました");
-                break;
-            case "23": // マイリスト作品件数超過
-                window.COMMON.showToast("マイリストの上限数に達しましたので、設定できません");
-                break;
-            case "24": // 公開期間外
-                window.COMMON.showToast("この作品は現在公開されておりません");
-                break;
-            case "82": // 要アプリバージョンアップ
-                window.location.href = "/animestore/iosapp_ver_warn";
-                break;
-            case "83": // 非対応機種
-                window.location.href = "/animestore/uncov_m";
-                break;
-            case "84": // 要アプリ起動
-                window.location.href = "/animestore/dapp_warn?next_url=" + encodeURIComponent(window.location.href);
-                break;
-            case "85": // 海外UA
-                window.location.href = "/animestore/os_warn";
-                break;
-            case "86": // 未認証
-            case "87": // 非会員
-                window.doLogin(null, {
-                    type: "edit_mylist",
-                    data: {workId: workId, regShareListIdList: regShareListIdList, delShareListIdList: delShareListIdList, isEdit: isEdit},
-                    timing: "load pageshow"
-                });
-                break;
-            default:
-                window.COMMON.showToast("エラーが発生しました");
-                break;
-        }
-        if (typeof callback === "function") {
-            callback(false);
-        }
-    });
+res=await fetch(window.COMMON.RESTAPI_ENDPOINT.getFavorite)
+.then(d => d.json())
+
+ul=$(".pageWrapper ul.onlyPcLayout");
+pageLength=$("li:last", ul).text().match(/\d+/);
+urlTmp=location.href.replace(/(?<=\?.*)selectPage=\d+/, "")
+urlBase= urlTmp+ (/[\?&]$/.test(urlTmp) ? "" : "?") + "selectPage=";
+
+content=await fetch(urlBase+"4").then(d=>d.body)
+.then(d=>d.getReader())
+.then(reader=>reader.read())
+.then(res=>new TextDecoder("utf-8").decode(res.value))
+
+a=$("div.itemWrapper", content)
+
+itemHTMLs=await Promise.all([...Array(pageLength-1).keys()].map(d=>d+2).map(async pageNum=>{
+    const content=await fetch(`${urlBase}${pageNum}`).then(d=>d.body)
+        .then(d=>d.getReader())
+        .then(reader=>reader.read())
+        .then(res=>new TextDecoder("utf-8").decode(res.value));
+    return $("div.itemWrapper.clearfix", content).html();
+}))
+$(".pageWrapper div.itemWrapper.clearfix").append(itemHTMLs.join("\n"))
+
+const _restPost = async function (url, json) {
+    const headers = {
+        "Content-Type": "application/json",
+        timeout: window.COMMON.API_WEB_TIMEOUT
+    };
+    const opts = { method: "post", body: JSON.stringify(json), cache: "no-cache", headers: headers };
+    return await fetch(url, opts)
+        .then(resIn => {
+            return (resIn.ok) ? resIn.json() : {}
+        }) //dataがnullの場合の回避
+        .then(res => {
+            if (res.resultCd === "00" || res.resultCd === "01") {
+                return res.data;
+            } else {
+                return {error:((res.error) ? res.error.code : "unknown")};
+            }
+        }).catch(errorMessage => {
+            console.log(errorMessage);
+        });
+};
+
+
+
+
+res=await fetch(window.COMMON.RESTAPI_ENDPOINT.getMyListStatus+"?targetFlag=10&workIdList=24439_24410").then(d=>d.json())
+
+res=await fetch(window.COMMON.RESTAPI_ENDPOINT.getMyListStatus+"?targetFlag=11").then(d=>d.json())
+
+
+workIdLists=[...Array(1401).keys()].map(d=>d+20000).join("_")
+res=await fetch(window.COMMON.RESTAPI_ENDPOINT.getMyListStatus+"?targetFlag=10&workIdList="+workIdLists).then(d=>d.json()).then(d=>d.data.statusList)
+res2=res.filter(d=>d.favoriteStatus=="1")
+
+
+res=await fetch(window.COMMON.RESTAPI_ENDPOINT.getMyListStatus+"?targetFlag=10&workIdList=24439").then(d=>d.json()).then(d=>d.data.statusList)
+
+res=await fetch(window.COMMON.RESTAPI_ENDPOINT.getMyListStatus).then(d=>d.json()).then(d=>d.data)
+res=await fetch("/animestore/CN/CN00000001").then(d=>d.json()).then(d=>d.data)
+
+res=await fetch(window.COMMON.RESTAPI_ENDPOINT.getMyListStatus).then(d=>d.json())
+res=await fetch("https://anime.dmkt-sp.jp/animestore/rest/WS100124?campaignId=&_=1614685318665"
+).then(d=>d.json())
+
+res=await fetch("https://anime.dmkt-sp.jp/animestore/rest/WS100124?campaignId=1614685318665"
+).then(d=>d.json())
+
+const obtainStreamBody = async (url) => {
+    for (const count of Array(3)) {
+        try {
+            const content = await fetch(url).then(d => d.body)
+                .then(d => d.getReader())
+                .then(reader => reader.read())
+                .then(res => new TextDecoder("utf-8").decode(res.value));
+            return content;
+        } catch { continue; }
+    }
+    return "";
 }
+const urlFav = "https://anime.dmkt-sp.jp/animestore/mpa_fav_pc";
+const htmlContent=await obtainStreamBody(urlFav);
+const itemFirst=$("div.itemWrapper.clearfix", htmlContent);
+const ul=$("ul.onlyPcLayout", htmlContent);
+const pageLength=$(`li:last`, ul).text().match(/\d+/)-0;
+const urlBase=`${urlFav}?selectPage=`;
+const pageRange={first:2, length:pageLength-1};
+const itemHTMLs_tmp = await Promise.all([...Array(pageRange.length).keys()]
+    .map(d => d + pageRange.first).map(async pageNum => {
+        const content = await obtainStreamBody(`${urlBase}${pageNum}`);
+        return $("div.itemWrapper.clearfix", content);
+}));
+const itemHTMLs=[itemFirst, ...itemHTMLs_tmp];
+itemHTMLs.map(wrapper=>$(".itemModule input", wrapper).map((ind, obj)=>$(obj).val()).toArray()).flat();
 
-async function addMylistModal(){
-    const workIds=$(".contentsWrapper .itemWrapper .itemModule.selected input").map((ind,obj)=>$(obj).val());
-    if (workIds.length==0) return;
-    const shareList=await window.COMMON.restGet(window.COMMON.RESTAPI_ENDPOINT.getShareList).then(d=>d.shareList);
-    const modalId=`DIALOG${Date.now()}`
-    const modalAddMyList=`
-    <modal id="${modalId}" class="modalDialog addMyListDialog" style="">
-    <div class="modalOverlay"></div>
-    <div class="generalModal" style="left: 258px; top: 106px;">
-        <div class="titleArea">
-            <div class="title">マイリストに追加</div>
-            <div class="closeBtn btnCloseModal"><a href="javascript:$('#${modalId}').remove();"><i class="icon iconCircleClose"></i></a></div>
-        </div>
-        <div class="modalAddMyListIn">
-            <p>各リストに最大50件まで作品を追加することができます</p>
-            <div class="formContainer">
-                <div class="formContainerWrapper">
-                    <div class="formContainerCover"></div>
-                    <div class="formContainerIn webkitScrollbar vertical">
-                        <form>
-                            ${shareList.map((list, ind)=>{
-                                return `
-                                <div class="checkboxList clearfix">
-                                    <div class="checkbox sharelistId sharelist_${ind}" data-sharelistid="${list.shareListId}">
-                                        <a href="javascript:$('.sharelist_${ind}').toggleClass('on');"><i class="sharelist_${ind}"></i></a>
-                                    </div>
-                                    <div class="label">
-                                        <p class="title line1">
-                                            <span>${list.shareListName}</span>
-                                            <span class="comment onlyMax">最大50件登録済みです</span>
-                                            <span class="comment onlyAdded">すでに登録済みです</span>
-                                            <span class="comment onlyDel">このリストから削除されます</span>
-                                            <span class="comment onlyAdd">このリストに追加されます</span>
-                                        </p>
-                                        <span class="count">(${list.count})</span>
-                                    </div>
-                                </div>`
-                            }).join("\n")}
-                        </form>
-                        <div class="btnNewMyList">新しいマイリストを作成<i class="icon iconCircleAdd"></i></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="btnArea" style="vertical-align:middle;padding:0;">
-            <span><a href="javascript:void(0);" class="btnAddMyList">マイリストに追加する(${workIds.length})</a></span>
-        </div>
-    </div>
-    </modal>`
-    $("body").append(modalAddMyList);
-}
-
-<div class="btnEditCancel" style="position:relative;"><a href="javascript:void(0);">キャンセル<i class="icon iconEdit"></i></a></div>
-
-    //const headerArea = (url_mode == "editList") ? $(".mypageHeader span.sortComment").empty().css({ color: "transparent" }) : $(".mypageHeader");
-    //const btnArea = $("<div>", { class: "btnArea btnOpenAddMyListArea", style: "visibility:hidden;display:flex;" });
-    //const addBtn = $("<a>", { href: "javascript:void(0)", class: "btn btnOpenAddMyList" }).append("マイリストに追加する");
-    //headerArea.append(btnArea.append(addBtn));
-
-
-    7r8sWf9OAKxl8DRW
+workIdsDic={"yellow":["24410", "23657"], "lightgreen":["24410", "23657"], "lightblue":["24410"]}
+itemModules=$(".itemModule")
+itemModules.each((ind,obj)=>{
+    workIdTmp=$("input", obj).val();
+    const colors=Object.entries(workIdsDic).filter(kv=>kv[1].indexOf(workIdTmp)!=-1).map(kv=>kv[0]);
+    if (colors){
+        $(obj).css({background:`linear-gradient(-135deg, ${colors.join(",")}, 60%, white 100%)`})
+    }
+})

@@ -15,42 +15,66 @@ const obtainUrlMode = () => {
         viewAllList: "https://anime.dmkt-sp.jp/animestore/mpa_rsv_pc"
     }).filter(kv => location.href.indexOf(kv[1]) != -1)[0] || [""])[0];
     const modalClass = $("modal").map((ind, obj) => $(obj).attr("class").split(" ").filter(d => /Dialog$/.test(d) && d != "modalDialog").join(" "))
-        .toArray().map(d => d.replace(/Dialog$/, "")).join(" ");
+        .toArray().join(" ");
     return [url_mode, modalClass].join(" ");
 }
 const obtainContainer = (url_mode) => {
-    if (["viewCacheList"].some(d => url_mode.indexOf(d) != -1)) {
+    if (["viewCacheListDialog"].some(d => url_mode.indexOf(d) != -1)) {
         return $(`modal.viewCacheListDialog`);
     } else return $(".pageWrapper");
 }
 
 $(async function () {
-    await addInitialButton();
+    await addInitialButton(null, null);
+    await getSyncStorage({ expandMode: "" }).then(async items => {
+        const expandMode = items.expandMode;
+        await expandPage(expandMode);
+    })
+    await saveShareLists();
+    await saveFavorites();
+    await colorItemWork();
 
     document.addEventListener("click", async function (e) {
         const url_mode = obtainUrlMode();
         const container = obtainContainer(url_mode);
         const IsEditMode = $("body").is(".editMode");
-        if ($(e.target).is(".itemModule.openCacheList *")) {
+        if ($(e.target).is(".itemModule.mylist.openCacheList *")) {
             const cacheListId = $(e.target).parents("a:eq(0)").data("cachelistid").toString();
             await viewWorksOfCacheListModal(cacheListId);
         } else if ($(e.target).is(".btnOpenAddMyList")) {
             await addMyListModal(container);
         } else if ($(e.target).is(".btnOpenNewMyList")) {
             createMyListModal();
+        } else if ($(e.target).is(".btnOperateFav")) {
+            if ($(".itemModule.list.selected", container).length == 0) return;
+            const workIdsTmp = $(".itemModule.list.selected", container).map((ind, obj) => $(obj).data("workid"));
+            const workIds = (workIdsTmp.length > 0) ? workIdsTmp.toArray().map(d => d.toString()) :
+                $(".itemModule.list.selected>input", container).map((ind, obj) => $(obj).val().toString()).toArray();
+            const operateStatus = ($(e.target).is(".Add")) ? 1 : 2;
+            const cycleNum = parseInt(workIds.length / 50) + 1;
+            for (const cycle of [...Array(cycleNum).keys()]) {
+                const workIdsSplited = workIds.slice(cycle * 50, (cycle + 1) * 50); // 一度の上限が50くらい?
+                const res = await _registFavoriteWorkOrTag(workIdsSplited, operateStatus);
+                //console.log(res);
+            }
+            if (["viewFav"].some(d => url_mode.indexOf(d) != -1)) location.reload();
+            toggleEdit(container, false);
+            if ($(e.target).is("modal.otherMenuDialog *")) $("modal.otherMenuDialog").remove();
+            await saveFavorites();
+            // 告知modal: 気になるリストに追加/削除されました。
         } else if ($(e.target).is(".btnNewMyList")) {
             const newMyListName = $("#newMyListName").val();
             await createNewList(newMyListName);
-            $(`modal.newMyListDialog`).remove();
-            // 告知modal: 新しいマイリストが作成されました。
             await remakeAddMyListModal();
+            $(`modal.createMyListDialog`).remove();
+            // 告知modal: 新しいマイリストが作成されました。
         } else if ($(e.target).is(".editFooter .btnCopyList")) {
             await copyList($(e.target).is(".aboutCache"));
             toggleEdit(container, false);
             // 告知modal: ……作品が含まれる「……」が作成されました。
-            if (! $(e.target).is(".aboutCache")) location.reload();
+            if (!$(e.target).is(".aboutCache")) location.reload();
         } else if ($(e.target).is(".editFooter .btnDeleteCacheList")) {
-            const selectedCacheLists = $(".contentsWrapper .itemWrapper .itemModule.selected>input.cacheListId");
+            const selectedCacheLists = $(".contentsWrapper .itemWrapper .itemModule.mylist.selected>input.cacheListId");
             if (selectedCacheLists.length == 0) return;
             const selectedCacheIds = selectedCacheLists.map((ind, obj) => $(obj).val()).toArray();
             await deleteCacheList(selectedCacheIds);
@@ -58,16 +82,20 @@ $(async function () {
             await showCacheList();
         } else if ($(e.target).is(".btnOtherMenu")) {
             const IsViewList = $(e.target).is(".aboutViewList");
-            const workIsSelected = $(".itemModule.selected>input", container).length > 0;
+            const workIsSelected = $(".itemModule.list.selected>input", container).length > 0;
             otherMenuModal({ IsViewList, workIsSelected });
+        } else if ($(e.target).is(".btnExpandPage")) {
+            // expand items
+            await expandPage($(e.target).attr("class"));
         } else if ($(e.target).is("modal.modalDialogChEx *")) {
             const modal = $(e.target).parents("modal");
             if ($(e.target).is(".closeBtn *, .closeBtn")) {
                 if (IsEditMode) toggleEdit(container, false);
                 modal.remove();
             } else if ($(e.target).is(".btnAddMyList")) {
-                const workIdsTmp = $(".itemModule.selected", container).map((ind, obj) => $(obj).data("workid"));
-                const workIds = (workIdsTmp.length > 0) ? workIdsTmp.toArray().map(d => d.toString()) : $(".itemModule.selected>input", container).map((ind, obj) => $(obj).val().toString()).toArray();
+                const workIdsTmp = $(".itemModule.list.selected", container).map((ind, obj) => $(obj).data("workid"));
+                const workIds = (workIdsTmp.length > 0) ? workIdsTmp.toArray().map(d => d.toString()) :
+                    $(".itemModule.list.selected>input", container).map((ind, obj) => $(obj).val().toString()).toArray();
                 const sharelistIds = $(".sharelistId.on", modal).map((ind, obj) => $(obj).data("sharelistid").toString()).toArray();
                 const cachelistIds = $(".cachelistId.on", modal).map((ind, obj) => $(obj).data("cachelistid").toString()).toArray();
                 await addWorkToLists(workIds, { cache: cachelistIds, share: sharelistIds });
@@ -79,28 +107,28 @@ $(async function () {
             } else if ($(e.target).is($(".btnEdit *,.btnEditCancel *"))) {
                 // toggle Edit mode for new Module
                 toggleEdit($(e.target).parents(".formContainerIn"), $(e.target).is(".btnEdit *"))
-                const selectedWorks = $(".formContainerIn .itemModule.selected", modal);
+                const selectedWorks = $(".formContainerIn .itemModule.list.selected", modal);
                 $(".btnDelete span", modal).html(selectedWorks.length);
             } else if (IsEditMode && $(e.target).is(".btnSelectToggle *, .btnSelectToggle")) {
                 const toggleArea = $(e.target).parents(".btnSelectToggle");
                 toggleArea.toggleClass("checked");
-                $(".itemModule", $(e.target).parents(".formContainerIn")).map((ind, obj) => {
+                $(".itemModule.list", $(e.target).parents(".formContainerIn")).map((ind, obj) => {
                     if (toggleArea.is(".checked")) $(obj).addClass("selected").removeClass("notSelected");
                     else $(obj).removeClass("selected").addClass("notSelected");;
                 });
-                const selectedWorks = $(".formContainerIn .itemModule.selected", modal);
+                const selectedWorks = $(".formContainerIn .itemModule.list.selected", modal);
                 $(".btnDelete span", modal).html(selectedWorks.length);
-            } else if (IsEditMode && $(e.target).is(".itemModule *")) {
+            } else if (IsEditMode && $(e.target).is(".itemModule *")) { // list, mylist 両方?
                 const itemModule = $(e.target).parents(".itemModule");
                 $(itemModule).toggleClass("selected").toggleClass("notSelected");
-                const selectedWorks = $(".formContainerIn .itemModule.selected", modal);
+                const selectedWorks = $(".formContainerIn .itemModule.list.selected", modal);
                 $(".btnDelete span", modal).html(selectedWorks.length);
             } else if (IsEditMode && $(e.target).is(".editFooter *")) {
                 const cacheListId = modal.data("cachelistid").toString();
                 if ($(e.target).is(".btnCancel")) {
                     toggleEdit(modal, false);
                 } else if ($(e.target).is(".btnDelete")) {
-                    const selectedWorks = $(".formContainerIn .itemModule.selected", modal);
+                    const selectedWorks = $(".formContainerIn .itemModule.list.selected", modal);
                     if (selectedWorks.length == 0) return;
                     const selectedWorkIds = selectedWorks.map((ind, obj) => $(obj).data("workid").toString()).toArray();
                     await deleteFromCacheList(cacheListId, selectedWorkIds);
@@ -129,7 +157,7 @@ $(async function () {
                             share: []
                         }),
                         "11": async () => Object.assign(...["cache", "share"]
-                            .map(key => Object({ [key]: $(`.pageWrapper .itemModule.selected>input.${key}ListId`).map((ind, obj) => $(obj).val().toString()).toArray() }))),
+                            .map(key => Object({ [key]: $(`.pageWrapper .itemModule.mylist.selected>input.${key}ListId`).map((ind, obj) => $(obj).val().toString()).toArray() }))),
                         "00": async () => Object({ cache: $("modal.viewCacheListDialog").data("cachelistid").toString(), share: [] }),
                         "01": async () => Object({ cache: $("modal.viewCacheListDialog").data("cachelistid").toString(), sahre: [] })
                     }
@@ -138,21 +166,23 @@ $(async function () {
                 } else if ($(e.target).is(".btnImportCacheList")) {
 
                     const inputFiles = await $(".inputImportCacheList", $(e.target).parents(".generalModal")).prop("files");
-                    if (inputFiles.length==0) return;
-                    const importTarget=$(".check_importToSelectedList", $(e.target).parents(".generalModal")).val();
-                    const obtainImportIds={
-                        present: ()=>Object({ cache: $("modal.viewCacheListDialog").data("cachelistid").toString(), share: [] }),
+                    if (inputFiles.length == 0) return;
+                    const importTarget = $(".check_importToSelectedList", $(e.target).parents(".generalModal")).val();
+                    const obtainImportIds = {
+                        present: () => Object({ cache: $("modal.viewCacheListDialog").data("cachelistid").toString(), share: [] }),
                         selected: () => Object.assign(...["cache", "share"]
-                            .map(key => Object({ [key]: $(`.pageWrapper .itemModule.selected>input.${key}ListId`)
-                                .map((ind, obj) => $(obj).val().toString()).toArray() }))),
-                        cache: ()=>Object({new:"cache"}),
-                        share: ()=>Object({new:"share"})
+                            .map(key => Object({
+                                [key]: $(`.pageWrapper .itemModule.mylist.selected>input.${key}ListId`)
+                                    .map((ind, obj) => $(obj).val().toString()).toArray()
+                            }))),
+                        cache: () => Object({ new: "cache" }),
+                        share: () => Object({ new: "share" })
                     };
-                    const importIds=await obtainImportIds[importTarget]();
-                    for(const ind of [...Array(inputFiles.length).keys()]){
+                    const importIds = await obtainImportIds[importTarget]();
+                    for (const ind of [...Array(inputFiles.length).keys()]) {
                         await importList(await inputFiles[ind].text(), importIds);
                     };
-                    if (url_mode.indexOf("viewList")==-1) await remakeWorksOfCacheListModal();
+                    if (url_mode.indexOf("viewList") == -1) await remakeWorksOfCacheListModal();
                     toggleEdit(container, false);
                     otherMenuModal.remove();
                     await showCacheList();
@@ -181,7 +211,7 @@ $(async function () {
 // ----------------- edit List --------------------
 
 async function copyList(IsCached) {
-    const selectedLists = $(".pageWrapper .itemWrapper .itemModule.selected");
+    const selectedLists = $(".pageWrapper .itemWrapper .itemModule.mylist.selected");
     if (selectedLists.length == 0) return;
     const listIds = Object.assign(...["share", "cache"].map(key => Object({ [key]: selectedLists.map((ind, obj) => $(obj).data(`${key}listid`)).toArray().filter(d => d) })));
     const workIdsShare = (listIds.share.length == 0) ? [] : await Promise.all(listIds.share.map(async shareListId =>
@@ -196,7 +226,9 @@ async function copyList(IsCached) {
             .map(cacheList => cacheList.workIds).flat());
     const workIds = Array.from(new Set([...workIdsShare, ...workIdsCache]));
     //console.log(lists, workIds);
-    await autoSplitedList($("h3 .ui-clamp", selectedLists[0]).text().replace(RegExp(`${GLOBAL_listName_sep}.*$`), "") + `${GLOBAL_listName_sep}${new Date().toLocaleDateString().match(/[\d\/]+/)}`, workIds, IsCached);
+    const listName = $("h3 .ui-clamp", selectedLists[0]).text().replace(RegExp(`${GLOBAL_listName_sep}.*$`), "")
+        + `${GLOBAL_listName_sep}${new Date().toLocaleDateString().match(/[\d\/]+/)}`;
+    await autoSplitedList(listName, workIds, IsCached);
 }
 
 async function autoSplitedList(coreNameIn, workIds, IsCached = false) {
@@ -236,14 +268,14 @@ async function deleteFromCacheList(cacheListId, workIds) {
 
 async function createNewList(listName = "") {
     if (RegExp(`^${GLOBAL_cache_prefix}`).test(listName)) {
-        let lists = await getSyncStorage({ lists: JSON.stringify({}) }).then(items=>JSON.parse(items.lists));
+        let lists = await getSyncStorage({ lists: JSON.stringify({}) }).then(items => JSON.parse(items.lists));
         const listId = `${GLOBAL_cache_prefix}${Date.now()}`;
         const newList = { madeDate: Date.now(), name: listName, exportIds: [], workIds: [], listId: listId };
         lists[listId] = newList;
         await setSyncStorage({ lists: JSON.stringify(lists) });
         return { listId, lists };
     } else {
-        return await _createShareList(listName, true, "").then(d => ({listId:d.shareListId}) );
+        return await _createShareList(listName, true, "").then(d => ({ listId: d.shareListId }));
     }
 }
 
@@ -255,37 +287,35 @@ async function deleteCacheList(selectedCacheIds) {
 }
 
 async function addWorkToLists(workIdsIn, listsDic) {
-    const shareListIds = listsDic.share;
-    const cacheListIds = listsDic.cache;
+    const shareListIds = Array.from(new Set(listsDic.share));
+    const cacheListIds = Array.from(new Set(listsDic.cache));
     if (shareListIds.length > 0) {
-        const shareLists = await Promise.all(shareListIds
-            .map(async listId => ({[listId]:await fetch(window.COMMON.RESTAPI_ENDPOINT.getWorkFromShareList + `?shareListId=${listId}`)
-                .then(d => d.json())
-                .then(d => ({workIds :d.data.workList.map(work=>work.workId), name:d.data.shareListName}) )})))
-            .then(dics=>Object.assign(...dics));
-        let shareAddInfos=Object.assign(...shareListIds.map(listId=>({[listId]:{count:shareLists[listId].workIds.length, listId:listId}})));
+        const shareLists = await getSyncStorage({ shareLists: JSON.stringify({}) }).then(items => JSON.parse(items.shareLists));
+        let shareAddInfos = Object.assign(...shareListIds.map(listId => ({ [listId]: { count: shareLists[listId].workIds.length, listId: listId } })));
         for (const workId of workIdsIn) {
-            const shareListIdsTmp = await Object.entries(shareLists)
-                .reduce(async (acc, kv)=>{
-                    const listId=kv[0];
-                    if (kv[1].workIds.indexOf(workId)!=-1) return acc;
-                    if (shareAddInfos[listId].count%50==0) {
-                        const listName = shareLists[listId].name.replace(RegExp(`${GLOBAL_listName_sep}.*$`), "").slice(0, 10) + GLOBAL_listName_sep + (Date.now()).toString().slice(6, 20);
-                        shareAddInfos[listId].listId=await createNewList(listName).then(d=>d.listId);
+            const shareListIdsTmp = await shareListIds
+                .reduce(async (acc, cur) => {
+                    const listId = cur;
+                    if (shareLists[listId].workIds.indexOf(workId) != -1) return acc;
+                    if (shareAddInfos[listId].count % 50 == 0) {
+                        const listName = shareLists[listId].name.replace(RegExp(`${GLOBAL_listName_sep}.*$`), "").slice(0, 10)
+                            + GLOBAL_listName_sep + (Date.now()).toString().slice(6, 20);
+                        shareAddInfos[listId].listId = await createNewList(listName).then(d => d.listId);
                     }
-                    shareAddInfos[listId].count +=1;
+                    shareAddInfos[listId].count += 1;
                     return acc.concat(shareAddInfos[listId].listId)
                 }, []);
 
             if (shareListIdsTmp.length == 0) continue;
             await _editMyList(workId, shareListIdsTmp, []);
         };
+        await saveShareLists(shareListIds);
     }
     if (cacheListIds.length > 0) {
         let lists = await getSyncStorage({ lists: JSON.stringify({}) }).then(items => JSON.parse(items.lists));
         for (const cacheListId of cacheListIds) {
             if (!lists[cacheListId]) continue;
-            lists[cacheListId].workIds = Array.from(new Set([...lists[cachelistId].workIds, ...workIds]));
+            lists[cacheListId].workIds = Array.from(new Set([...lists[cacheListId].workIds, ...workIdsIn]));
         }
         await setSyncStorage({ lists: JSON.stringify(lists) });
     }
@@ -297,25 +327,31 @@ async function addWorkToLists(workIdsIn, listsDic) {
 async function exportList(listIds = { cache: [], share: [] }, formatIn = null) {
     const format = formatIn || "json";
     const cacheLists = await getSyncStorage({ lists: JSON.stringify({}) }).then(items => JSON.parse(items.lists));
-    const shareLists = await fetch(window.COMMON.RESTAPI_ENDPOINT.getShareList).then(d => d.json()).then(res => res.data.shareList);
-    const shareWorkIds = await Promise.all(listIds.share
-        .map(async listId => Object({[listId]:await fetch(window.COMMON.RESTAPI_ENDPOINT.getWorkFromShareList + `?shareListId=${listId}`)
-            .then(d => d.json())
-            .then(d => d.data.workList.map(work=>work.workId))})))
-        .then(dics=>Object.assign(...dics));
+    const shareLists = await getSyncStorage({ shareLists: JSON.stringify({}) }).then(items => JSON.parse(items.shareLists));
     const validLists = {
         cache: Object.assign(...Object.values(cacheLists).filter(list => listIds.cache.indexOf(list.listId) != -1)
-            .map(list => Object({ [list.listId]: { name: list.name.replace(RegExp(`^${GLOBAL_cache_prefix}|${GLOBAL_listName_sep}.*$`, "g"), ""), workIds: list.workIds } })) , {}),
-        share: Object.assign(...shareLists.filter(list => listIds.share.indexOf(list.shareListId) != -1)
-            .map(list => Object({ [list.shareListId]: { name: list.shareListName.replace(RegExp(`${GLOBAL_listName_sep}.*$`, "g"), ""),
-                workIds: shareWorkIds[list.shareListId] } })), {} )
+            .map(list => ({
+                [list.listId]: {
+                    name: list.name.replace(RegExp(`^${GLOBAL_cache_prefix}|${GLOBAL_listName_sep}.*$`, "g"), ""),
+                    workIds: list.workIds,
+                    listId: list.listId
+                }
+            })), {}),
+        share: Object.assign(...Object.values(shareLists).filter(list => listIds.share.indexOf(list.shareListId) != -1)
+            .map(list => ({
+                [list.listId]: {
+                    name: list.name.replace(RegExp(`${GLOBAL_listName_sep}.*$`, "g"), ""),
+                    workIds: list.workIds,
+                    listId: list.listId
+                }
+            })), {})
     }
 
     const obtainContent = {
         json: lists => JSON.stringify(lists),
-        csv: lists => "# format:csv\n"+Object.values(lists).map(list => list.workIds.join(",")).join("\n"),
-        tsv: lists => "# format:tsv\n"+Object.values(lists).map(list => list.workIds.join("\t")).join("\n"),
-        txt: lists => "# format:txt\n"+Object.values(lists).map(list => list.workIds.join("\n")).join("\n\n")
+        csv: lists => "# format:csv\n" + Object.values(lists).map(list => list.workIds.join(",")).join("\n"),
+        tsv: lists => "# format:tsv\n" + Object.values(lists).map(list => list.workIds.join("\t")).join("\n"),
+        txt: lists => "# format:txt\n" + Object.values(lists).map(list => list.workIds.join("\n")).join("\n\n")
     }
     const validListsCombined = Object.assign(validLists.cache, validLists.share);
 
@@ -337,22 +373,23 @@ async function importList(textIn, listIds = { cache: [], share: [] }) {
         catch { return null; }
     }
     const obtainParse = {
-        csv: text => Object.assign(...split_data(text).filter(d=>/^[^#]/.test(d))
-            .map((line, ind) => Object({["csv"+ind]:{name:"",workIds:line.split(",")}}) )),
-        tsv: text => Object.assign(...split_data(text).filter(d=>/^[^#]/.test(d))
-            .map((line, ind) => Object({["tsv"+ind]:{name:"",workIds:line.split("\t")}}) ))
+        csv: text => Object.assign(...split_data(text).filter(d => /^[^#]/.test(d))
+            .map((line, ind) => Object({ ["csv" + ind]: { name: "", workIds: line.split(",") } }))),
+        tsv: text => Object.assign(...split_data(text).filter(d => /^[^#]/.test(d))
+            .map((line, ind) => Object({ ["tsv" + ind]: { name: "", workIds: line.split("\t") } })))
     }
     const jsonContent = obtainJsonParse(textIn);
-    const format = (jsonContent) ? "" : textIn.match(/(?<=^#.*format:)[\S]+/)[0] ;
+    const format = (jsonContent) ? "" : textIn.match(/(?<=^#.*format:)[\S]+/)[0];
     const parsedContent = (format) ? obtainParse[format](textIn) : jsonContent;
     if (!parsedContent) return;
     const cacheLists = await getSyncStorage({ lists: JSON.stringify({}) }).then(items => JSON.parse(items.lists));
-    const shareLists = await await fetch(window.COMMON.RESTAPI_ENDPOINT.getShareList).then(d => d.json()).then(res => res.data.shareList);
+    const shareLists = await getSyncStorage({ shareLists: JSON.stringify({}) }).then(items => JSON.parse(items.shareLists));
+    //const shareLists = await fetch(window.COMMON.RESTAPI_ENDPOINT.getShareList).then(d => d.json()).then(res => res.data.shareList);
     const validListIds = {
-        cache: Object.values(cacheLists).filter(list => (listIds.cache||[]).indexOf(list.listId) != -1)
+        cache: Object.values(cacheLists).filter(list => (listIds.cache || []).indexOf(list.listId) != -1)
             .map(list => list.listId),
-        share: shareLists.filter(list => (listIds.share||[]).indexOf(list.shareListId) != -1)
-            .map(list => list.shareListId)
+        share: Object.values(shareLists).filter(list => (listIds.share || []).indexOf(list.listId) != -1)
+            .map(list => list.listId)
     }
     for (const list of Object.values(parsedContent)) {
         if (!["workIds"].every(key => Object.keys(list).indexOf(key) != -1)) continue;
@@ -360,29 +397,28 @@ async function importList(textIn, listIds = { cache: [], share: [] }) {
         if ([...validListIds.cache, ...validListIds.share].length > 0) {
             await addWorkToLists(workIds, validListIds);
             return;
-        } else if (listIds.new && listIds.new=="cache") {
+        } else if (listIds.new && listIds.new == "cache") {
             await autoSplitedList(GLOBAL_cache_prefix + (list.name.replace(RegExp(`${GLOBAL_listName_sep}.*$`), "") || `list${GLOBAL_listName_sep}${new Date().toLocaleDateString()}`)
                 .replace(RegExp(`^${GLOBAL_cache_prefix}`), ""),
                 Array.from(new Set(workIds.map(workId => workId.toString()))), true);
-        } else if (listIds.new=="share") {
+        } else if (listIds.new == "share") {
             await autoSplitedList(`list${GLOBAL_listName_sep}${new Date().toLocaleDateString().match(/[\d\/]+/)}`,
                 Array.from(new Set(workIds.map(workId => workId.toString()))), false);
         }
     }
 }
 
-function split_data(data) {
-    const split_sep = "__SPLIT__";
-    return data.replace(/\r\n|\r|\n/g, split_sep).split(split_sep);
-}
+
+
 
 // ------------------ initial --------------------
 
-async function addInitialButton(url_modeIn = null, area = $(".pageWrapper")) {
+async function addInitialButton(url_modeIn = null, areaIn = null) {
+    const area = areaIn || $(".pageWrapper");
     const url_mode = url_modeIn || obtainUrlMode();
     const editArea = $("div.editFooterIn", area);
     $(`a.btnChEx1`, editArea).each((ind, obj) => $(obj).remove());
-    if (["viewCacheList"].indexOf(url_mode) != -1) {
+    if (["viewCacheListDialog"].some(d => url_mode.indexOf(d) != -1)) {
         const addBtn = $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnOpenAddMyList" })
             .append("マイリストに追加").css({ width: "17%" });
         const otherBtn = $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnOtherMenu aboutCacheList" })
@@ -407,18 +443,60 @@ async function addInitialButton(url_modeIn = null, area = $(".pageWrapper")) {
         $("a.btnDelete", editArea).css({ width: "13%", float: "left" });
         $("a.btnCancel", editArea).css({ width: "13%" });
         await showCacheList();
+    } else if (["viewFav"].some(d => url_mode.indexOf(d) != -1)) {
+        const addBtn = $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnOpenAddMyList" })
+            .append("マイリストに追加");
+        const favBtn = $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnOperateFav Delete" })
+            .append("気になるから削除");
+        editArea.append(addBtn).append(favBtn);
+        $("a.btnDelete", editArea).css({ width: "13%", float: "left" });
+        $("a.btnCancel", editArea).css({ width: "13%" });
     } else {
         const addBtn = $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnOpenAddMyList" })
             .append("マイリストに追加");
-        editArea.append(addBtn);
-        $("a.btnDelete", editArea).css({ width: "27%", float: "left" });
-        $("a.btnCancel", editArea).css({ width: "27%" });
+        const favBtn = $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnOperateFav Add" })
+            .append("気になるに追加");
+        editArea.append(addBtn).append(favBtn);
+        $("a.btnDelete", editArea).css({ width: "13%", float: "left" });
+        $("a.btnCancel", editArea).css({ width: "13%" });
+    }
+    if (!["viewList", "editList", "Dialog"].some(d => url_mode.indexOf(d) != -1)) {
+        //console.log(url_mode)
+        const ul = $(".pageWrapper ul.onlyPcLayout");
+        const pageCurrent = $("li.current", ul).text().match(/\d+/) - 0;
+        const pageLength = $("li:last", ul).text().match(/\d+/) - 0;
+        const btnDiv = $("<div>", { style: "float:left;font-size:12px;" })
+            .append(`拡張表示する:`);
+        const btnExpand = {
+            All: $("<a>", { href: "javascript:void(0);", class: "btnExpandPage All" })
+                .append(` 1-${pageLength}ページ `),
+            Five: $("<a>", { href: "javascript:void(0);", class: "btnExpandPage Five" })
+                .append(` ${pageCurrent}-${Math.min(pageCurrent + 4, pageLength)}ページ `),
+            Reverse: $("<a>", { href: "javascript:void(0);", class: "btnExpandPage Reverse" })
+                .append(` 戻す `)
+        }
+        console.log([pageCurrent - 5, pageCurrent + 5], [pageCurrent - 5, pageCurrent + 5]
+            .filter(num => !(num >= pageLength || num < 1)));
+        ([pageCurrent - 5, pageCurrent + 5])
+            .filter(num => !(num >= pageLength || num < 1))
+            .forEach((num, ind) => {
+                if (num != 1) {
+                    $(`li.cut:eq(${ind})`, ul).empty();
+                    $(`li.cut:eq(${ind})`, ul)
+                        .append($("<a>", { href: "javascript:void(0);", onclick: `pageLink(${num})` })
+                            .append(num))
+                }
+            });
+
+        $(".mypageHeader .btnExpandPage", area).each((ind, obj) => $(obj).remove());
+        Object.values(btnExpand).forEach(btn => btnDiv.append(btn));
+        $(".mypageHeader", area).append(btnDiv);
     }
 }
 
 async function showCacheList(containerIn = null, IsPrepended = true) {
     const container = containerIn || $(".pageWrapper");
-    $("div.openCacheList.itemModule").each((ind, obj) => $(obj).remove());
+    $("div.openCacheList.itemModule.mylist").each((ind, obj) => $(obj).remove());
     const cacheLists = await getSyncStorage({ lists: JSON.stringify({}) }).then(items => JSON.parse(items.lists));
     Object.values(cacheLists).forEach(cacheList => {
         const wrapper = $("div.itemWrapper", container);
@@ -453,11 +531,120 @@ function toggleEdit(container, editMode) {
     // toggle Edit mode for new Module
     if (editMode) $("body").addClass("editMode");
     else $("body").removeClass("editMode");
-    $(".itemModule", $(container)).map((ind, obj) => {
+    $(".itemModule", $(container)).map((ind, obj) => { // list, mylist 両方
         if (!editMode) { $(obj).removeClass("selected").removeClass("notSelected"); $(obj).removeClass("edit"); }
         else { $(obj).addClass("notSelected"); $(obj).removeClass("edit"); }
     });
 }
+
+
+async function expandPage(btnClass = "All") {
+    const beforeExpandArea = $(".pageWrapper div.itemWrapper.clearfix .itemForExpand");
+    if (beforeExpandArea.length > 0) beforeExpandArea.remove();
+    const expandMode = ["All", "Five", "Reverse"].filter(d => btnClass.indexOf(d) != -1)[0];
+    $(`.btnExpandPage`).each((ind, obj) => $(obj).css({ color: "" }));
+    if (!expandMode || expandMode == "Reverse") {
+        await setSyncStorage({ expandMode: "" });
+        return;
+    }
+
+    const ul = $(".pageWrapper ul.onlyPcLayout");
+    const pageCurrent = $("li.current", ul).text().match(/\d+/) - 0;
+    const pageLength = $("li:last", ul).text().match(/\d+/) - 0;
+    const urlTmp = location.href.replace(/(?<=\?.*)selectPage=\d+/, "");
+    const sepTmp = [[/[\?&]$/, ""], [/\?/, "&"], [/.*/, "?"]].filter(d => d[0].test(urlTmp)).map(d => d[1])[0];
+    const urlBase = urlTmp + sepTmp + "selectPage=";
+    const obtainRange = {
+        All: { length: pageLength - 1, first: 2 },
+        Five: { length: Math.min(4, pageLength - pageCurrent), first: pageCurrent + 1 }
+    }
+    const pageRange = obtainRange[expandMode];
+    if (!pageRange) return;
+
+    const itemHTMLs = await Promise.all([...Array(pageRange.length).keys()].map(d => d + pageRange.first).map(async pageNum => {
+        const content = await obtainStreamBody(`${urlBase}${pageNum}`);
+        return $("div.itemWrapper.clearfix", content).html();
+    }));
+    $(`.btnExpandPage.${expandMode}`).css({ color: "orange" });
+    $(".pageWrapper div.itemWrapper.clearfix").append($("<div>", { class: `itemForExpand ${expandMode}` }).append(itemHTMLs.join("\n")));
+    await setSyncStorage({ expandMode: expandMode });
+}
+
+async function colorItemWork(wrapperIn=null){
+    const wrapper=wrapperIn || $(".pageWrapper .itemWrapper");
+
+    const items=await getSyncStorage({lists:JSON.stringify({}), shareLists:JSON.stringify({}), favWorkIds:[]});
+    const ListColors={
+         "yellow":items.favWorkIds,
+     "lightgreen":Object.values(JSON.parse(items.lists)).map(list=>list.workIds).flat(),
+      "lightblue":Object.values(JSON.parse(items.shareLists)).map(list=>list.workIds).flat()}
+    const itemModules=$(".itemModule.list", wrapper);
+    if (itemModules.length==0) return;
+    console.log(ListColors)
+    itemModules.each((ind,obj)=>{
+        const workIdTmp=$("input", obj).val();
+        const colors=Object.entries(ListColors).filter(kv=>kv[1].indexOf(workIdTmp)!=-1).map(kv=>kv[0]);
+        if (colors){
+            $(obj).css({background:`linear-gradient(-135deg, ${colors.join(",")}, 60%, white 100%)`})
+        }
+    })
+}
+
+async function colorItemWork(wrapperIn=null){
+    const wrapper=wrapperIn || $(".pageWrapper .itemWrapper");
+    const itemModules=$(".itemModule.list", wrapper);
+    if (itemModules.length==0) return;
+
+    const items=await getSyncStorage({lists:JSON.stringify({}), shareLists:JSON.stringify({}), favWorkIds:[]});
+    const ListColors={
+         "yellow":items.favWorkIds,
+     "lightgreen":Object.values(JSON.parse(items.lists)).map(list=>list.workIds).flat(),
+      "lightblue":Object.values(JSON.parse(items.shareLists)).map(list=>list.workIds).flat()}
+    console.log(ListColors)
+    itemModules.each((ind,obj)=>{
+        const workIdTmp=$("input", obj).val();
+        const colors=Object.entries(ListColors).filter(kv=>kv[1].indexOf(workIdTmp)!=-1).map(kv=>kv[0]);
+        if (colors){
+            $(obj).css({background:`linear-gradient(-135deg, ${colors.join(",")}, 60%, white 100%)`})
+        }
+    })
+}
+
+async function saveShareLists(shareListIdsIn = null) {
+    const shareListIds = shareListIdsIn || await fetch(window.COMMON.RESTAPI_ENDPOINT.getShareList)
+        .then(d => d.json()).then(res => res.data.shareList.map(list => list.shareListId));
+    const shareLists = await Promise.all(shareListIds
+        .map(async listId => ({
+            [listId]: await fetch(window.COMMON.RESTAPI_ENDPOINT.getWorkFromShareList + `?shareListId=${listId}`)
+                .then(d => d.json())
+                .then(d => ({ workIds: d.data.workList.map(work => work.workId), name: d.data.shareListName, listId: listId }))
+        })))
+        .then(dics => Object.assign(...dics));
+    const shareListsOld = (shareListIdsIn) ? await setSyncStorage({ shareLists: JSON.stringify({}) }) : {};
+    await setSyncStorage({ shareLists: JSON.stringify(Object.assign(shareListsOld, shareLists)) });
+    return shareLists;
+}
+
+async function saveFavorites() {
+    const urlFav = "https://anime.dmkt-sp.jp/animestore/mpa_fav_pc";
+    const htmlContent=await obtainStreamBody(urlFav);
+    const itemFirst=$("div.itemWrapper.clearfix .itemModule.list input", htmlContent);
+    const ul=$("ul.onlyPcLayout", htmlContent);
+    const pageLength=$(`li:last`, ul).text().match(/\d+/)-0;
+    const urlBase=`${urlFav}?selectPage=`;
+    const pageRange={first:2, length:pageLength-1};
+    const itemHTMLs_tmp = await Promise.all([...Array(pageRange.length).keys()]
+        .map(d => d + pageRange.first).map(async pageNum => {
+            const content = await obtainStreamBody(`${urlBase}${pageNum}`);
+            return $("div.itemWrapper.clearfix .itemModule.list input", content);
+    }));
+    const itemHTMLs=[itemFirst, ...itemHTMLs_tmp];
+    //const favWorkIds=itemHTMLs.map(wrapper=>$(".itemModule.list input", wrapper).map((ind, obj)=>$(obj).val()).toArray()).flat();
+    //const favWorkIds=itemHTMLs.map(wrapper=>$(wrapper).map((ind, obj)=>$(obj).val()).toArray()).flat();
+    const favWorkIds=itemHTMLs.map(wrapper=>$(wrapper).map((ind, obj)=>$(obj).val()).toArray()).flat();
+    await setSyncStorage({favWorkIds:favWorkIds});
+}
+
 
 // ------------------ about Modal -------------------
 
@@ -497,6 +684,19 @@ async function otherMenuModal(args = { IsViewList: false, workIsSelected: false 
     })
     divImport.append(headingImport).append(btnImport).append(textImport).append("<br>").append(importFile).append("<br>").append(selectImport);
 
+    // Favorite
+    const divFav = $("<li>", { style: "padding:10px;" });
+    const favIsValid = !args.IsViewList && args.workIsSelected;
+    if (favIsValid) {
+        const favBtn = {
+            add: $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnOperateFav Add" })
+                .append("気になるに追加"),
+            delete: $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnOperateFav Delete" })
+                .append("気になるから削除")
+        }
+        divFav.append(favBtn.add).append(favBtn.delete);
+    }
+
     // modal
     const modalId = `DIALOG${Date.now()}`
     const modalHTML = $(`
@@ -508,16 +708,16 @@ async function otherMenuModal(args = { IsViewList: false, workIsSelected: false 
                 <div class="closeBtn btnCloseModal"><i class="icon iconCircleClose"></i></div>
             </div>
             <div class="formContainerWrapper">
-            <div class="formContainerCover"></div>
-            <div class="formContainerIn webkitScrollbar vertical">
-            <ul style="text-align:start;">
-            </ul>
-            </div>
-            </div>
+                <div class="formContainerCover"></div>
+                    <div class="formContainerIn webkitScrollbar vertical">
+                        <ul style="text-align:start;">
+                        </ul>
+                    </div>
+                </div>
             </div>
         </div>
     </modal>`)
-    $("ul", modalHTML).append(divExport).append(divImport);
+    $("ul", modalHTML).append(divExport).append(divImport).append(favIsValid ? divFav : "");
     $("body").append(modalHTML);
     $(`#${modalId} .modalOverlay`).height(Math.max($(`#${modalId} .generalModal`).height(), window.innerHeight));
     return modalId;
@@ -629,7 +829,7 @@ async function viewWorksOfCacheListModal(cacheListId) {
     $("body").append(modalHTML);
     const modalGeneral = $(`#${modalId} .generalModal`);
     modalGeneral.append($(".editFooter").clone());
-    addInitialButton("viewCacheList", modalGeneral);
+    addInitialButton("viewCacheListDialog", modalGeneral);
     $(`#${modalId} .modalOverlay`).height(Math.max(modalGeneral.height() + 250, window.innerHeight));
 }
 
@@ -650,10 +850,13 @@ async function remakeWorksOfCacheListModal(cacheListIdIn = null) {
 
 const obtainList2HTML = (key, lists) =>
     (lists || []).map((list, ind) => {
-        const IsShare = (key == "share");
-        const listId = (IsShare) ? list.shareListId : list.listId;
+        //const IsShare = (key == "share");
+        /*const listId = (IsShare) ? list.shareListId : list.listId;
         const listName = (IsShare) ? list.shareListName : list.name;
-        const listCount = (IsShare) ? list.count : list.workIds.length;
+        const listCount = (IsShare) ? list.count : list.workIds.length;*/
+        const listId = list.listId;
+        const listName = list.name;
+        const listCount = list.workIds.length;
         return `
     <div class="checkboxList clearfix">
         <a href="javascript:$('.${key}list_${ind}').toggleClass('on');">
@@ -675,10 +878,12 @@ const obtainList2HTML = (key, lists) =>
         `}).join("\n");
 
 async function addMyListModal(container = $(".pageWrapper")) {
-    const workIdsTmp = $(".itemModule.selected", container).map((ind, obj) => $(obj).data("workid"));
-    const workIds = (workIdsTmp.length > 0) ? workIdsTmp : $(".itemModule.selected>input", container).map((ind, obj) => $(obj).val());
+    const workIdsTmp = $(".itemModule.list.selected", container).map((ind, obj) => $(obj).data("workid"));
+    const workIds = (workIdsTmp.length > 0) ? workIdsTmp : $(".itemModule.list.selected>input", container).map((ind, obj) => $(obj).val());
     if (workIds.length == 0) return;
-    const shareLists = await fetch(window.COMMON.RESTAPI_ENDPOINT.getShareList).then(d => d.json()).then(res => res.data.shareList);
+    //const shareLists = await fetch(window.COMMON.RESTAPI_ENDPOINT.getShareList).then(d => d.json()).then(res => res.data.shareList);
+    const shareLists = await getSyncStorage({ shareLists: JSON.stringify({}) }).then(items => JSON.parse(items.shareLists));
+
     const cacheLists = await getSyncStorage({ lists: JSON.stringify({}) }).then(items => JSON.parse(items.lists));
 
 
@@ -699,8 +904,8 @@ async function addMyListModal(container = $(".pageWrapper")) {
                     <div class="formContainerCover"></div>
                     <div class="formContainerIn webkitScrollbar vertical">
                         <form>
-                            ${obtainList2HTML("share", shareLists)}
                             ${obtainList2HTML("cache", Object.values(cacheLists))}
+                            ${obtainList2HTML("share", Object.values(shareLists))}
                         </form>
                         <div><a href="javascript:void(0);" class="btnArea btnOpenNewMyList">新しいマイリストを作成</a><i class="icon iconCircleAdd"></i></div>
                     </div>
@@ -718,13 +923,14 @@ async function addMyListModal(container = $(".pageWrapper")) {
 }
 
 async function remakeAddMyListModal() {
-    const shareLists = await fetch(window.COMMON.RESTAPI_ENDPOINT.getShareList).then(d => d.json()).then(res => res.data.shareList);
+    //const shareLists = await fetch(window.COMMON.RESTAPI_ENDPOINT.getShareList).then(d => d.json()).then(res => res.data.shareList);
+    const shareLists = await getSyncStorage({ shareLists: JSON.stringify({}) }).then(items => JSON.parse(items.shareLists));
     const cacheLists = await getSyncStorage({ lists: JSON.stringify({}) }).then(items => JSON.parse(items.lists));
     const modal = $(`modal.addMyListDialog`);
     const form = $("div.formContainerIn form", modal);
     form.empty();
-    form.append(obtainCacheListHTML("share", shareLists))
-        .append(obtainCacheListHTML("cache", Object.values(cacheLists)));
+    form.append(obtainList2HTML("cache", Object.values(cacheLists)))
+        .append(obtainList2HTML("share", Object.values(shareLists)));
 }
 
 function createMyListModal() {
@@ -754,8 +960,11 @@ function createMyListModal() {
 
 }
 
-//---------others -----------------
-
+//--------- others -----------------
+function split_data(data) {
+    const split_sep = "__SPLIT__";
+    return data.replace(/\r\n|\r|\n/g, split_sep).split(split_sep);
+}
 const getSyncStorage = (key = null) => new Promise(resolve => {
     chrome.storage.sync.get(key, resolve);
 });
@@ -763,6 +972,19 @@ const getSyncStorage = (key = null) => new Promise(resolve => {
 const setSyncStorage = (key = null) => new Promise(resolve => {
     chrome.storage.sync.set(key, resolve);
 });
+
+const obtainStreamBody = async (url) => {
+    for (const count of Array(3)) {
+        try {
+            const content = await fetch(url).then(d => d.body)
+                .then(d => d.getReader())
+                .then(reader => reader.read())
+                .then(res => new TextDecoder("utf-8").decode(res.value));
+            return content;
+        } catch { continue; }
+    }
+    return "";
+}
 
 //------------------ modified from from common.js -------------
 
@@ -893,7 +1115,7 @@ async function _createShareList(shareListName, isEdit, workId) {
     }
 }
 
-_restPost = async function (url, json) {
+const _restPost = async function (url, json) {
     const headers = {
         "Content-Type": "application/json",
         timeout: window.COMMON.API_WEB_TIMEOUT
@@ -914,56 +1136,23 @@ _restPost = async function (url, json) {
         });
 };
 
+const _registFavoriteWorkOrTag = async function (idOrList, updateType) {
+    const paramKeyFavorite = "workIdList";
+
+    const endpointUrl = window.COMMON.RESTAPI_ENDPOINT.registFavorite;
+    const paramKey = paramKeyFavorite;
+
+    const params = {
+        updateType: updateType, // 1:regist, 2:delete
+        [paramKey]: (Array.isArray(idOrList) && idOrList.length) ? idOrList.join("_") : idOrList
+    };
+
+    return await _restPost(endpointUrl, params);
+};
+
 // -------------- from common.js ----------------
 
 
-/* 
-restPost2 = function (url, json) {
-    var deferred = new $.Deferred();
-    var func = function (dfd) {
-        var args = (typeof url === "string") ? {"url": url, "data": JSON.stringify(json)} : url;
-        var param = $.extend({
-            type: "post",
-            contentType: "application/json",
-            dataType: "json",
-            cache: false,
-            async: true,
-            timeout: window.COMMON.API_WEB_TIMEOUT
-        }, args);
-        var count = 0;
-        var self = function() {
-            if (!param || !param.url) {
-                window.setTimeout(function () {
-                    dfd.reject("empty url");
-                }, 0);
-                return;
-            }
-            $.ajax(param).done(function (data) {
-                //console.log(data)
-                data = data || {}; //dataがnullの場合の回避
-                if (data.resultCd === "00" || data.resultCd === "01") {
-                    dfd.resolve(data.data);
-                } else {
-                    dfd.reject((data.error) ? data.error.code : "unknown");
-                }
-            }).fail(function (jqXHR) {
-                if (jqXHR.status === 0) {
-                    if (++count > window.COMMON.API_RETRY_MAX_COUNT) {
-                        dfd.reject("OverRetryCount");
-                    } else {
-                        window.setTimeout(self, window.COMMON.API_RETRY_INTERVAL);
-                    }
-                } else {
-                    dfd.reject(jqXHR.status);
-                }
-            });
-        };
-        return self;
-    };
-    func(deferred)();
-    return deferred.promise();
-};
-*/
 
 window.COMMON = {
     cookieMap: {},			// cookieをオブジェクト形式で保存したもの
