@@ -37,7 +37,7 @@ $(async function () {
         if (colorSettings.workIsColored) await colorItemWork();
     })
     if (location.href.indexOf("://anime.dmkt-sp.jp/animestore/mpa_shr_pc?shareListId=") != -1) {
-        $(".pageWrapper > div.headerSubTab > ul > li.current > a").attr({ href: "mpa_mylists_pc" });
+        $(".pageWrapper > div.headerSubTab > ul > li.current > a").attr({ href: "mpa_mylists_pc"}).css({cursor:"pointer", "pointer-events":"auto"});
     }
     await sortLists({initial:true});
     //await saveFavorites();
@@ -99,7 +99,6 @@ $(async function () {
             await expandPage($(e.target).attr("class"));
         } else if ($(e.target).is(".btnDecideList")) {
             // expand items
-            console.log(1)
             await setSortLists();
             toggleEdit(container, false);
         } else if ($(e.target).is("modal.modalDialogChEx *")) {
@@ -165,7 +164,7 @@ $(async function () {
                     const sortIndexs = $("modal.viewCacheListDialog .itemModule.list").map((ind, obj) => $(obj).data("sort-index")).toArray();
                     if (sortIndexs != [...Array(sortIndexs.length).keys()]) {
                         const workIdsTmp = lists[cacheListId].workIds;
-                        lists[cacheListId].workIds = workIdsTmp.sort((a, b) => sortIndexs[workIdsTmp.indexOf(a)] - sortIndexs[workIdsTmp.indexOf(b)]);
+                        lists[cacheListId].workIds = workIdsTmp.slice().sort((a, b) => sortIndexs[workIdsTmp.indexOf(a)] - sortIndexs[workIdsTmp.indexOf(b)]);
                     }
                     await setSyncStorage({ lists: JSON.stringify(lists) });
                     // 告知modal: ……から……へ名前が変更されました。
@@ -242,17 +241,14 @@ $(async function () {
 
 const triggerDrag = async (args = { IsEdit, mode }) => {
     const mode_dic = {
-        viewList: { class: "mylist", wrapper: ".pageWrapper", remakeFunc: async () => await sortLists({initial:true}) },
-        viewCacheListDialog: { class: "list", wrapper: "modal.viewCacheListDialog", remakeFunc: async () => await remakeWorksOfCacheListModal({ reset: true }) }
+        viewList: { class: "mylist", wrapper: ".pageWrapper",
+            remakeFunc: async () => await sortLists({initial:true}) },
+        viewCacheListDialog: { class: "list", wrapper: "modal.viewCacheListDialog",
+            remakeFunc: async () => await remakeWorksOfCacheListModal({ reset: true }) }
     }
     if (Object.keys(mode_dic).indexOf(args.mode) == -1) return;
     if (args.IsEdit) await dragItemEditMode($(mode_dic[args.mode].wrapper));
-    else if (!args.IsEdit) {
-        const sortIndexs = $(`${mode_dic[args.mode].wrapper} .itemModule.${mode_dic[args.mode].class}`).map((ind, obj) => $(obj).data("sort-index")).toArray();
-        if (sortIndexs != [...Array(sortIndexs.length).keys()]) {
-            await mode_dic[args.mode].remakeFunc();
-        }
-    }
+    else await mode_dic[args.mode].remakeFunc();
 }
 
 // ----------------- edit List --------------------
@@ -597,22 +593,23 @@ async function showCacheList(args={container: null, IsPrepended : true}) {
     })
 }
 
-async function sortLists(args={reset:true, initial:true}){
-    const sortIndexes= await getSyncStorage({sortListIndex:JSON.stringify({})}).then(items=>JSON.parse(items.sortListIndex));
+async function sortLists(args={initial:false}){
+    const sortListIndexes= await getSyncStorage({sortListIndex:JSON.stringify({})}).then(items=>JSON.parse(items.sortListIndex));
     const listDOMs=$(".pageWrapper .itemModule.mylist");
-    const listClone=listDOMs.clone().sort((a,b)=>{
-        if (args.reset){
-            return $(a).data("sort-index") - $(b).data("sort-index");
-        } else {
-            const indexes=[$("input[type='hidden']", a).val(), $("input[type='hidden']", b).val()];
-            return sortIndexes[indexes[0]]||0 - sortIndexes[indexes[1]]||0;
-        }
+    inds=listDOMs.clone().map((ind,obj)=>sortListIndexes[$("input[type='hidden']", obj).val()] )
+    const listClone=listDOMs.clone().slice().sort((a,b)=>{
+        const indexes=[a,b].map(d=>$("input[type='hidden']", d).val())
+            .map(d=> sortListIndexes[d] || 0);
+        return indexes[0]-indexes[1];
     }).toArray();
     if (args.initial){
         listDOMs.each((ind,obj)=>{
             const idTmp=$("input[type='hidden']", obj).val();
-            if (ind!=sortIndexes[idTmp]) $(obj).replaceWith(listClone[ind]);
+            if (ind!=sortListIndexes[idTmp]) $(obj).replaceWith(listClone[ind]);
         });
+        /*const wrapper=$(".pageWrapper .itemWrapper");
+        wrapper.empty();
+        wrapper.append(listClone.map(d=>$(d).prop("outerHTML")).join("\n") )*/
         return;
     }
     listDOMs.each((ind,obj)=>{
@@ -625,7 +622,6 @@ async function sortLists(args={reset:true, initial:true}){
 async function setSortLists(){
     const sortIndexes=Object.assign(...$(".pageWrapper .itemModule.mylist")
         .map((ind, obj)=> ({[$("input[type='hidden']", obj).val()]: ind}) ).toArray());
-    console.log(sortIndexes)
     await setSyncStorage({sortListIndex:JSON.stringify(sortIndexes)});
 }
 
@@ -948,8 +944,8 @@ async function remakeWorksOfCacheListModal(args = {}) {
     } else if (args.reset) {
         // reset sort
         //const sortIndexs=$("modal.viewCacheListDialog .itemModule.list").map((ind,obj)=>$(obj).data("sort-index")).toArray();
-        const itemsClone = $("modal.viewCacheListDialog .itemModule.list")
-            .sort((a, b) => $(a).data("sort-index") - $(b).data("sort-index")).clone();
+        const itemsClone = $("modal.viewCacheListDialog .itemModule.list").slice()
+            .sort((a, b) => $(a).data("sort-index") - $(b).data("sort-index"));
         $("modal.viewCacheListDialog .itemModule.list").each((ind, obj) => {
             const indexTmp = $(obj).data("sort-index");
             if (indexTmp != ind) $(obj).replaceWith(itemsClone[ind]);
