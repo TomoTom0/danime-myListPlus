@@ -215,7 +215,7 @@
 						}
 						$list.addClass("drag");
 						// イベント処理を間引く処理
-						var now = Date.now();
+						/* */var now = Date.now();
 						// スクロール処理ではない(ドラッグ処理)、かつイベント間隔が短い場合
 						if (!event.isTrigger && lastEventTimestamp && now - lastEventTimestamp < THROTTLE_INTERVAL) {
 							// スクロールタイマーが発行されている場合、一旦解除し、

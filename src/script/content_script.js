@@ -1,8 +1,8 @@
 ﻿const GLOBAL_cache_prefix = "cache_";
 const GLOBAL_listName_sep = "@@";
 
-const colorSettingsDefault = {workIsColored:true}
-const colorSettingsString=JSON.stringify(colorSettingsDefault)
+const colorSettingsDefault = { workIsColored: true }
+const colorSettingsString = JSON.stringify(colorSettingsDefault)
 
 const obtainUrlMode = () => {
     const url_mode = (Object.entries({
@@ -27,16 +27,22 @@ const obtainContainer = (url_mode) => {
 }
 
 $(async function () {
+    $("div.mypageHeader").attr({ style: "position:-webkit-sticky; position:sticky; top:10px; background:rgba(255,255,255,0.9); z-index:1000;" });
+
     await addInitialButton(null, null);
-    await getSyncStorage({ expandMode: "", colorSettings:colorSettingsString }).then(async items => {
+    await getSyncStorage({ expandMode: "", colorSettings: colorSettingsString }).then(async items => {
         const expandMode = items.expandMode;
         await expandPage(expandMode);
-        const colorSettings=JSON.parse(items.colorSettings);
-        console.log(colorSettings)
+        const colorSettings = JSON.parse(items.colorSettings);
         if (colorSettings.workIsColored) await colorItemWork();
     })
+    if (location.href.indexOf("://anime.dmkt-sp.jp/animestore/mpa_shr_pc?shareListId=") != -1) {
+        $(".pageWrapper > div.headerSubTab > ul > li.current > a").attr({ href: "mpa_mylists_pc" });
+    }
+    await sortLists({initial:true});
     //await saveFavorites();
     await saveShareLists();
+    await setSortLists();
 
     document.addEventListener("click", async function (e) {
         const url_mode = obtainUrlMode();
@@ -45,8 +51,8 @@ $(async function () {
         if ($(e.target).is(".itemModule.mylist.openCacheList *")) {
             const cacheListId = $(e.target).parents("a:eq(0)").data("cachelistid").toString();
             await viewWorksOfCacheListModal(cacheListId);
-        } else if ($(e.target).is(".btnOpenAddMyList")) {
-            await addMyListModal(container);
+        } else if ($(e.target).is(".btnOpenAddDeleteMyList")) {
+            await addDeleteMyListModal(container);
         } else if ($(e.target).is(".btnOpenNewMyList")) {
             createMyListModal();
         } else if ($(e.target).is(".btnOperateFav")) {
@@ -62,14 +68,14 @@ $(async function () {
                 //console.log(res);
             }
             if (["viewFav"].some(d => url_mode.indexOf(d) != -1)) location.reload();
-            toggleEdit(container, false);
+            //toggleEdit(container, false);
             if ($(e.target).is("modal.otherMenuDialog *")) $("modal.otherMenuDialog").remove();
             //await saveFavorites();
             // 告知modal: 気になるリストに追加/削除されました。
         } else if ($(e.target).is(".btnNewMyList")) {
             const newMyListName = $("#newMyListName").val();
             await createNewList(newMyListName);
-            await remakeAddMyListModal();
+            await remakeaddDeleteMyListModal();
             $(`modal.createMyListDialog`).remove();
             // 告知modal: 新しいマイリストが作成されました。
         } else if ($(e.target).is(".editFooter .btnCopyList")) {
@@ -82,7 +88,7 @@ $(async function () {
             if (selectedCacheLists.length == 0) return;
             const selectedCacheIds = selectedCacheLists.map((ind, obj) => $(obj).val()).toArray();
             await deleteCacheList(selectedCacheIds);
-            toggleEdit(container, false)
+            toggleEdit(container, false);
             await showCacheList();
         } else if ($(e.target).is(".btnOtherMenu")) {
             const IsViewList = $(e.target).is(".aboutViewList");
@@ -91,34 +97,48 @@ $(async function () {
         } else if ($(e.target).is(".btnExpandPage")) {
             // expand items
             await expandPage($(e.target).attr("class"));
+        } else if ($(e.target).is(".btnDecideList")) {
+            // expand items
+            console.log(1)
+            await setSortLists();
+            toggleEdit(container, false);
         } else if ($(e.target).is("modal.modalDialogChEx *")) {
             const modal = $(e.target).parents("modal");
             if ($(e.target).is(".closeBtn *, .closeBtn")) {
                 if (IsEditMode) toggleEdit(container, false);
                 modal.remove();
-            } else if ($(e.target).is(".btnAddMyList")) {
+            } else if ($(e.target).is(".btnAddMyList, .btnDeleteMyList")) {
                 const workIdsTmp = $(".itemModule.list.selected", container).map((ind, obj) => $(obj).data("workid"));
                 const workIds = (workIdsTmp.length > 0) ? workIdsTmp.toArray().map(d => d.toString()) :
                     $(".itemModule.list.selected>input", container).map((ind, obj) => $(obj).val()).toArray();
                 const sharelistIds = $(".sharelistId.on", modal).map((ind, obj) => $(obj).data("sharelistid").toString()).toArray();
                 const cachelistIds = $(".cachelistId.on", modal).map((ind, obj) => $(obj).data("cachelistid").toString()).toArray();
-                await addWorkToLists(workIds, { cache: cachelistIds, share: sharelistIds });
-                $("modal.addMyListDialog").remove();
+                if ($(e.target).is(".btnAddMyList")) await addWorkToLists(workIds, { cache: cachelistIds, share: sharelistIds });
+                else await deleteWorkFromLists(workIds, { cache: cachelistIds, share: sharelistIds });
+                $("modal.addDeleteMyListDialog").remove();
                 // 告知modal: ……作品が追加されました。作品数が上限に達していたので、自動的に「……」が作成されました。
-                toggleEdit(container, false);
-                if (["viewList"].indexOf(url_mode) != -1) await showCacheList();
-                console.log("add works to my list");
-            } else if ($(e.target).is($(".btnEdit *,.btnEditCancel *"))) {
+                //toggleEdit(container, false);
+                if (["viewList"].some(d => url_mode.indexOf(d) != -1)) await showCacheList();
+                if (["viewCacheListDialog"].some(d => url_mode.indexOf(d) != -1)) {
+                    const cacshListIdNow = $("modal.viewCacheListDialog").data("cachelistid").toString();
+                    if (cachelistIds.indexOf(cacshListIdNow) != -1) {
+                        await remakeWorksOfCacheListModal({ delete: workIds });
+                    }
+                }
+                console.log("done");
+            } else if ($(e.target).is($(".btnEdit *,.btnEditCancel *, .btnCancel"))) {
                 // toggle Edit mode for new Module
-                toggleEdit($(e.target).parents(".formContainerIn"), $(e.target).is(".btnEdit *"))
+                const IsEdit = $(e.target).is(".btnEdit *");
+                toggleEdit($(e.target).parents(".formContainerIn"), IsEdit);
                 const selectedWorks = $(".formContainerIn .itemModule.list.selected", modal);
                 $(".btnDelete span", modal).html(selectedWorks.length);
+                await triggerDrag({ IsEdit, mode: "viewCacheListDialog" });
             } else if (IsEditMode && $(e.target).is(".btnSelectToggle *, .btnSelectToggle")) {
                 const toggleArea = $(e.target).parents(".btnSelectToggle");
                 toggleArea.toggleClass("checked");
                 $(".itemModule.list", $(e.target).parents(".formContainerIn")).map((ind, obj) => {
                     if (toggleArea.is(".checked")) $(obj).addClass("selected").removeClass("notSelected");
-                    else $(obj).removeClass("selected").addClass("notSelected");;
+                    else $(obj).removeClass("selected").addClass("notSelected");
                 });
                 const selectedWorks = $(".formContainerIn .itemModule.list.selected", modal);
                 $(".btnDelete span", modal).html(selectedWorks.length);
@@ -129,24 +149,27 @@ $(async function () {
                 $(".btnDelete span", modal).html(selectedWorks.length);
             } else if (IsEditMode && $(e.target).is(".editFooter *")) {
                 const cacheListId = modal.data("cachelistid").toString();
-                if ($(e.target).is(".btnCancel")) {
-                    toggleEdit(modal, false);
-                } else if ($(e.target).is(".btnDelete")) {
+                if ($(e.target).is(".btnDelete, .btnDelete *")) {
                     const selectedWorks = $(".formContainerIn .itemModule.list.selected", modal);
                     if (selectedWorks.length == 0) return;
                     const selectedWorkIds = selectedWorks.map((ind, obj) => $(obj).data("workid").toString()).toArray();
-                    await deleteFromCacheList(cacheListId, selectedWorkIds);
+                    await deleteWorkFromLists(selectedWorkIds, { cache: [cacheListId] });
                     // 告知modal: 「……」から……作品が削除されました。
                     toggleEdit(modal, false);
-                    await remakeWorksOfCacheListModal();
+                    await remakeWorksOfCacheListModal({ delete: selectedWorkIds })
                     await showCacheList();
-                } else if ($(e.target).is(".btnRenameCacheList")) {
+                } else if ($(e.target).is(".btnDecideCacheList")) {
                     let lists = await getSyncStorage({ lists: JSON.stringify({}) }).then(d => JSON.parse(d.lists));
                     const newName = GLOBAL_cache_prefix + $("#editMyListName").val();
                     lists[cacheListId].name = newName;
+                    const sortIndexs = $("modal.viewCacheListDialog .itemModule.list").map((ind, obj) => $(obj).data("sort-index")).toArray();
+                    if (sortIndexs != [...Array(sortIndexs.length).keys()]) {
+                        const workIdsTmp = lists[cacheListId].workIds;
+                        lists[cacheListId].workIds = workIdsTmp.sort((a, b) => sortIndexs[workIdsTmp.indexOf(a)] - sortIndexs[workIdsTmp.indexOf(b)]);
+                    }
                     await setSyncStorage({ lists: JSON.stringify(lists) });
                     // 告知modal: ……から……へ名前が変更されました。
-                    await remakeWorksOfCacheListModal();
+                    await remakeWorksOfCacheListModal({ changed: true });
                     toggleEdit(modal, false);
                     await showCacheList();
                 }
@@ -196,14 +219,20 @@ $(async function () {
         }
     })
 
-    const observer = new MutationObserver(records => {
+    let beforeClass = "";
+    const observer = new MutationObserver(async records => {
         for (const record of records) {
             if (record.attributeName == "class") {
                 const attrVal = $(record.target).attr(record.attributeName);
-                $(".mypageHeader div.btnOpenAddMyListArea").css({ visibility: attrVal.indexOf("editMode") != -1 ? "visible" : "hidden" })
+                //$(".mypageHeader div.btnOpenAddMyListArea").css({ visibility: attrVal.indexOf("editMode") != -1 ? "visible" : "hidden" })
+                const IsEdit = attrVal.indexOf("editMode") != -1 && beforeClass.indexOf("editMode") == -1;
+                const WasEdit = attrVal.indexOf("editMode") == -1 && beforeClass.indexOf("editMode") != -1;
+                if (IsEdit) await triggerDrag({ IsEdit: true, mode: "viewList" });
+                else if (WasEdit) await triggerDrag({ IsEdit: false, mode: "viewList" });
+                beforeClass = attrVal;
             }
             if (record.type == "childList") {
-                $("html").css({ "overflow-y": $("body modal").length > 0 ? "hidden" : "" })
+                $("html").css({ "overflow-y": $("body modal").length > 0 ? "hidden" : "" });
             }
         }
     });
@@ -211,6 +240,20 @@ $(async function () {
     observer.observe($("body")[0], config);
 })
 
+const triggerDrag = async (args = { IsEdit, mode }) => {
+    const mode_dic = {
+        viewList: { class: "mylist", wrapper: ".pageWrapper", remakeFunc: async () => await sortLists({initial:true}) },
+        viewCacheListDialog: { class: "list", wrapper: "modal.viewCacheListDialog", remakeFunc: async () => await remakeWorksOfCacheListModal({ reset: true }) }
+    }
+    if (Object.keys(mode_dic).indexOf(args.mode) == -1) return;
+    if (args.IsEdit) await dragItemEditMode($(mode_dic[args.mode].wrapper));
+    else if (!args.IsEdit) {
+        const sortIndexs = $(`${mode_dic[args.mode].wrapper} .itemModule.${mode_dic[args.mode].class}`).map((ind, obj) => $(obj).data("sort-index")).toArray();
+        if (sortIndexs != [...Array(sortIndexs.length).keys()]) {
+            await mode_dic[args.mode].remakeFunc();
+        }
+    }
+}
 
 // ----------------- edit List --------------------
 
@@ -229,14 +272,12 @@ async function copyList(IsCached) {
             .filter(cacheList => listIds.cache.indexOf(cacheList.listId) != -1)
             .map(cacheList => cacheList.workIds).flat());
     const workIds = Array.from(new Set([...workIdsShare, ...workIdsCache]));
-    //console.log(lists, workIds);
     const listName = $("h3 .ui-clamp", selectedLists[0]).text().replace(RegExp(`${GLOBAL_listName_sep}.*$`), "")
         + `${GLOBAL_listName_sep}${new Date().toLocaleDateString().match(/[\d\/]+/)}`;
     await autoSplitedList(listName, workIds, IsCached);
 }
 
 async function autoSplitedList(coreNameIn, workIds, IsCached = false) {
-    //console.log(workIds, IsCached)
     const cycleNum = Math.floor(workIds.length / 50 + 1);
     const coreName = (IsCached ? GLOBAL_cache_prefix : "") + coreNameIn.replace(RegExp(`^${GLOBAL_cache_prefix}|${GLOBAL_listName_sep}.*$`, "g"), "");
     const dateNum = Date.now() - 0;
@@ -267,8 +308,6 @@ async function deleteFromCacheList(cacheListId, workIds) {
     lists[cacheListId].workIds = lists[cacheListId].workIds.filter(workId => workIds.indexOf(workId) == -1);
     await setSyncStorage({ lists: JSON.stringify(lists) });
 }
-
-// ----------------- lists in cache ----------------
 
 async function createNewList(listName = "") {
     if (RegExp(`^${GLOBAL_cache_prefix}`).test(listName)) {
@@ -320,6 +359,28 @@ async function addWorkToLists(workIdsIn, listsDic) {
         for (const cacheListId of cacheListIds) {
             if (!lists[cacheListId]) continue;
             lists[cacheListId].workIds = Array.from(new Set([...lists[cacheListId].workIds, ...workIdsIn]));
+        }
+        await setSyncStorage({ lists: JSON.stringify(lists) });
+    }
+}
+
+async function deleteWorkFromLists(workIdsIn, listsDic) {
+    const shareListIds = Array.from(new Set(listsDic.share));
+    const cacheListIds = Array.from(new Set(listsDic.cache));
+    if (shareListIds.length > 0) {
+        const shareLists = await getSyncStorage({ shareLists: JSON.stringify({}) }).then(items => JSON.parse(items.shareLists));
+        for (const workId of workIdsIn) {
+            const shareListIdsTmp = Object.values(shareLists).filter(list => list.workIds.indexOf(workId) == -1).map(list => list.listId);
+            if (shareListIdsTmp.length == 0) continue;
+            await _editMyList(workId, [], shareListIdsTmp);
+        };
+        await saveShareLists(shareListIds);
+    }
+    if (cacheListIds.length > 0) {
+        let lists = await getSyncStorage({ lists: JSON.stringify({}) }).then(items => JSON.parse(items.lists));
+        for (const cacheListId of cacheListIds) {
+            if (!lists[cacheListId]) continue;
+            lists[cacheListId].workIds = lists[cacheListId].workIds.filter(workId => workIdsIn.indexOf(workId) == -1);
         }
         await setSyncStorage({ lists: JSON.stringify(lists) });
     }
@@ -421,43 +482,49 @@ async function addInitialButton(url_modeIn = null, areaIn = null) {
     const area = areaIn || $(".pageWrapper");
     const url_mode = url_modeIn || obtainUrlMode();
     const editArea = $("div.editFooterIn", area);
-    $(`a.btnChEx1`, editArea).each((ind, obj) => $(obj).remove());
+    $(`a.btnChEx1`, editArea).remove();
     if (["viewCacheListDialog"].some(d => url_mode.indexOf(d) != -1)) {
-        const addBtn = $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnOpenAddMyList" })
-            .append("マイリストに追加").css({ width: "17%" });
-        const otherBtn = $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnOtherMenu aboutCacheList" })
-            .append("その他").css({ width: "15%" });
-        const renameBtn = $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnRenameCacheList" })
-            .append("名前変更").css({ width: "15%" });
-
-        editArea.append(addBtn).append(renameBtn).append(otherBtn);
-        $("a.btnDelete", editArea).css({ width: "13%", float: "left" });
+        const btns = {
+            addDelete: $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnOpenAddDeleteMyList" })
+                .append("リストに追加/削除").css({ width: "19%" }),
+            rename: $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnDecideCacheList" })
+                .append("名称/順番確定").css({ width: "15%" }),
+            other: $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnOtherMenu aboutCacheList" })
+                .append("その他").css({ width: "15%" }),
+            delete: $("<a>", { href: "javascript:void(0)", class: "btnDelete", id:"sharelistDel" })
+            .append("削除").css({ width: "13%", float: "left" })
+        }
+        Object.values(btns).map(btn => editArea.append(btn));
         $("a.btnCancel", editArea).css({ width: "13%" });
     } else if (["viewList"].some(d => url_mode.indexOf(d) != -1)) {
-        const copyBtn = $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnCopyList" })
-            .append("合成").css({ width: "10%" });
-        const copyCacheBtn = $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnCopyList aboutCache" })
-            .append("合成(Cache)").css({ width: "13%" });
-        const deleteBtn = $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnDeleteCacheList" })
-            .append("削除(Cache)").css({ width: "13%", float: "right" });
-        const otherBtn = $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnOtherMenu aboutViewList" })
-            .append("その他").css({ width: "10%" });
+        const btns ={
+            copy: $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnCopyList" })
+                .append("合成").css({ width: "10%" }),
+        copyCache: $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnCopyList aboutCache" })
+            .append("合成(Cache)").css({ width: "13%" }),
+        decide : $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnDecideList" })
+            .append("順番決定").css({ width: "13%" }),
+        other: $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnOtherMenu aboutViewList" })
+            .append("その他").css({ width: "10%" }),
+        delete: $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnDeleteCacheList" })
+            .append("削除").css({ width: "13%" })}
 
-        editArea.append(otherBtn).append(copyCacheBtn).append(deleteBtn).append(copyBtn);
-        $("a.btnDelete", editArea).css({ width: "13%", float: "left" });
+        Object.values(btns).forEach(btn=>editArea.append(btn));
+
+        $("a.btnDelete", editArea).remove();
         $("a.btnCancel", editArea).css({ width: "13%" });
         await showCacheList();
     } else if (["viewFav"].some(d => url_mode.indexOf(d) != -1)) {
-        const addBtn = $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnOpenAddMyList" })
-            .append("マイリストに追加");
+        const addBtn = $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnOpenAddDeleteMyList" })
+            .append("リストに追加/削除");
         const favBtn = $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnOperateFav Delete" })
             .append("気になるから削除");
         editArea.append(addBtn).append(favBtn);
         $("a.btnDelete", editArea).css({ width: "13%", float: "left" });
         $("a.btnCancel", editArea).css({ width: "13%" });
     } else {
-        const addBtn = $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnOpenAddMyList" })
-            .append("マイリストに追加");
+        const addBtn = $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnOpenAddDeleteMyList" })
+            .append("リストに追加/削除");
         const favBtn = $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnOperateFav Add" })
             .append("気になるに追加");
         editArea.append(addBtn).append(favBtn);
@@ -478,29 +545,28 @@ async function addInitialButton(url_modeIn = null, areaIn = null) {
                 .append(` ${pageCurrent}-${Math.min(pageCurrent + 4, pageLength)}ページ `),
             Reverse: $("<a>", { href: "javascript:void(0);", class: "btnExpandPage Reverse" })
                 .append(` 戻す `)
-        }
-        console.log([pageCurrent - 5, pageCurrent + 5], [pageCurrent - 5, pageCurrent + 5]
-            .filter(num => !(num >= pageLength || num < 1)));
-        ([pageCurrent - 5, pageCurrent + 5])
+        };
+
+        Array.from([pageCurrent - 5, pageCurrent + 5])
             .filter(num => !(num >= pageLength || num < 1))
             .forEach((num, ind) => {
                 if (num != 1) {
                     $(`li.cut:eq(${ind})`, ul).empty();
                     $(`li.cut:eq(${ind})`, ul)
                         .append($("<a>", { href: "javascript:void(0);", onclick: `pageLink(${num})` })
-                            .append(num))
+                            .append(num));
                 }
             });
 
-        $(".mypageHeader .btnExpandPage", area).each((ind, obj) => $(obj).remove());
+        $(".mypageHeader .btnExpandPage", area).remove();
         Object.values(btnExpand).forEach(btn => btnDiv.append(btn));
         $(".mypageHeader", area).append(btnDiv);
     }
 }
 
-async function showCacheList(containerIn = null, IsPrepended = true) {
-    const container = containerIn || $(".pageWrapper");
-    $("div.openCacheList.itemModule.mylist").each((ind, obj) => $(obj).remove());
+async function showCacheList(args={container: null, IsPrepended : true}) {
+    const container = args.container || $(".pageWrapper");
+    $("div.openCacheList.itemModule.mylist").remove();
     const cacheLists = await getSyncStorage({ lists: JSON.stringify({}) }).then(items => JSON.parse(items.lists));
     Object.values(cacheLists).forEach(cacheList => {
         const wrapper = $("div.itemWrapper", container);
@@ -526,9 +592,41 @@ async function showCacheList(containerIn = null, IsPrepended = true) {
             </section>
             <div class="selectedImg">マイリストを削除</div>
         </div>`
-        if (IsPrepended) wrapper.prepend(itemHTML);
+        if (args.IsPrepended) wrapper.prepend(itemHTML);
         else wrapper.append(itemHTML)
     })
+}
+
+async function sortLists(args={reset:true, initial:true}){
+    const sortIndexes= await getSyncStorage({sortListIndex:JSON.stringify({})}).then(items=>JSON.parse(items.sortListIndex));
+    const listDOMs=$(".pageWrapper .itemModule.mylist");
+    const listClone=listDOMs.clone().sort((a,b)=>{
+        if (args.reset){
+            return $(a).data("sort-index") - $(b).data("sort-index");
+        } else {
+            const indexes=[$("input[type='hidden']", a).val(), $("input[type='hidden']", b).val()];
+            return sortIndexes[indexes[0]]||0 - sortIndexes[indexes[1]]||0;
+        }
+    }).toArray();
+    if (args.initial){
+        listDOMs.each((ind,obj)=>{
+            const idTmp=$("input[type='hidden']", obj).val();
+            if (ind!=sortIndexes[idTmp]) $(obj).replaceWith(listClone[ind]);
+        });
+        return;
+    }
+    listDOMs.each((ind,obj)=>{
+        const indexTmp=$(obj).data("sort-index");
+        if ($(obj).data("sort-index")==null) $(obj).replaceWith(listClone[ind]);
+        else if (indexTmp!=ind) $(obj).replaceWith(listClone[ind]);
+    })
+}
+
+async function setSortLists(){
+    const sortIndexes=Object.assign(...$(".pageWrapper .itemModule.mylist")
+        .map((ind, obj)=> ({[$("input[type='hidden']", obj).val()]: ind}) ).toArray());
+    console.log(sortIndexes)
+    await setSyncStorage({sortListIndex:JSON.stringify(sortIndexes)});
 }
 
 function toggleEdit(container, editMode) {
@@ -546,8 +644,10 @@ async function expandPage(btnClass = "All") {
     const beforeExpandArea = $(".pageWrapper div.itemWrapper.clearfix .itemForExpand");
     if (beforeExpandArea.length > 0) beforeExpandArea.remove();
     const expandMode = ["All", "Five", "Reverse"].filter(d => btnClass.indexOf(d) != -1)[0];
-    $(`.btnExpandPage`).each((ind, obj) => $(obj).css({ color: "" }));
+    $(`.btnExpandPage`).css({ color: "" });
     if (!expandMode || expandMode == "Reverse") {
+        const itemCount = $("div.itemWrapper.clearfix .itemModule.list").length;
+        $(".pageWrapper div.mypageHeader div.btnSelectToggle.formContainer label span.count").text(itemCount);
         await setSyncStorage({ expandMode: "" });
         return;
     }
@@ -571,31 +671,33 @@ async function expandPage(btnClass = "All") {
     }));
     $(`.btnExpandPage.${expandMode}`).css({ color: "orange" });
     $(".pageWrapper div.itemWrapper.clearfix").append($("<div>", { class: `itemForExpand ${expandMode}` }).append(itemHTMLs.join("\n")));
+    const itemCount = $("div.itemWrapper.clearfix .itemModule.list").length;
+    $(".pageWrapper div.mypageHeader div.btnSelectToggle.formContainer label span.count").text(itemCount);
     await setSyncStorage({ expandMode: expandMode });
 }
 
-async function colorItemWork(wrapperIn=null){
-    const wrapper=wrapperIn || $(".pageWrapper .itemWrapper");
-    const itemModules=$(".itemModule.list", wrapper);
-    if (itemModules.length==0) return;
+async function colorItemWork(wrapperIn = null) {
+    const wrapper = wrapperIn || $(".pageWrapper .itemWrapper");
+    const itemModules = $(".itemModule.list", wrapper);
+    if (itemModules.length == 0) return;
 
-    const items=await getSyncStorage({lists:JSON.stringify({})});
+    const items = await getSyncStorage({ lists: JSON.stringify({}) });
     const workIdsTmp = $(".itemModule.list", wrapper).map((ind, obj) => $(obj).data("workid"));
     const workIds = (workIdsTmp.length > 0) ? workIdsTmp.toArray().map(d => d.toString()) :
         $(".itemModule.list>input", wrapper).map((ind, obj) => $(obj).val()).toArray();
-    const favWorkIds=await fetch(window.COMMON.RESTAPI_ENDPOINT.getMyListStatus+"?targetFlag=10&workIdList="+workIds.join("_")).then(d=>d.json())
-        .then(d=>d.data.statusList.filter(d=>d.favoriteStatus=="1").map(d=>d.workId))
-    const shareWorkIds=await fetch(window.COMMON.RESTAPI_ENDPOINT.getMyList).then(d=>d.json()).then(d=>d.data.workList.map(d=>d.workId))
-    const ListColors={
-         "fav":{color:"yellow", workIds:favWorkIds},
-     "cache":{color:"lightgreen", workIds:Object.values(JSON.parse(items.lists)).map(list=>list.workIds).flat()},
-      "share":{color:"lightblue", workIds:shareWorkIds}}
-    console.log(ListColors)
-    itemModules.each((ind,obj)=>{
-        const workIdTmp=workIds[ind];
-        const colors=Object.entries(ListColors).filter(kv=>kv[1].workIds.indexOf(workIdTmp)!=-1).map(kv=>kv[1].color);
-        if (colors && colors.length>0){
-            $(obj).css({background:`linear-gradient(-135deg, ${colors.join(",")}, 70%, white 100%)`})
+    const favWorkIds = await fetch(window.COMMON.RESTAPI_ENDPOINT.getMyListStatus + "?targetFlag=10&workIdList=" + workIds.join("_")).then(d => d.json())
+        .then(d => d.data.statusList.filter(d => d.favoriteStatus == "1").map(d => d.workId))
+    const shareWorkIds = await fetch(window.COMMON.RESTAPI_ENDPOINT.getMyList).then(d => d.json()).then(d => d.data.workList.map(d => d.workId))
+    const ListColors = {
+        "fav": { color: "yellow", workIds: favWorkIds },
+        "cache": { color: "lightgreen", workIds: Object.values(JSON.parse(items.lists)).map(list => list.workIds).flat() },
+        "share": { color: "lightblue", workIds: shareWorkIds }
+    }
+    itemModules.each((ind, obj) => {
+        const workIdTmp = workIds[ind];
+        const colors = Object.entries(ListColors).filter(kv => kv[1].workIds.indexOf(workIdTmp) != -1).map(kv => kv[1].color);
+        if (colors && colors.length > 0) {
+            $(obj).css({ background: `linear-gradient(-135deg, ${colors.join(",")}, 70%, white 100%)` })
         }
     })
 }
@@ -774,7 +876,7 @@ async function viewWorksOfCacheListModal(cacheListId) {
             <div class="title">リスト</div>
             <div class="closeBtn btnCloseModal"><i class="icon iconCircleClose"></i></div>
         </div>
-        <div class="formContainerWrapper">
+        <div class="contentWrapper">
             <div class="formContainerCover"></div>
             <div class="formContainerIn webkitScrollbar vertical">
                 <div class="mypageHeader mybest clearfix">
@@ -809,7 +911,7 @@ async function viewWorksOfCacheListModal(cacheListId) {
                 <div id="loader" class="loader" style="display: none;"><span></span></div>
                 <div class="btnSubscript">
                     <div class="btnArea">
-                        <a href="mpa_mylists" class="btnPageBack"><i class="icon iconArrowOrangeLeft"></i>マイリスト一覧へ</a>
+                        <a href="javascript:void(0);" class="closeBtn btnCloseModal"><i class="icon iconArrowOrangeLeft"></i>マイリスト一覧へ</a>
                     </div>
                 </div>
             </div>
@@ -818,25 +920,46 @@ async function viewWorksOfCacheListModal(cacheListId) {
     </modal>`
     $("body").append(modalHTML);
     const modalGeneral = $(`#${modalId} .generalModal`);
+    $("div.titleArea, div.mypageHeader", modalGeneral)
+        .each((ind, obj) => $(obj).attr({ style: `position:-webkit-sticky;top:${$(obj).position().top}px; position:sticky; background:rgba(255,255,255,0.9); z-index:1000;` }));
     colorItemWork(modalGeneral);
     modalGeneral.append($(".editFooter").clone());
     addInitialButton("viewCacheListDialog", modalGeneral);
     $(`#${modalId} .modalOverlay`).height(Math.max(modalGeneral.height() + 250, window.innerHeight));
 }
 
-async function remakeWorksOfCacheListModal(cacheListIdIn = null) {
+async function remakeWorksOfCacheListModal(args = {}) {
     const modal = $("modal.viewCacheListDialog");
-    const cacheListId = cacheListIdIn || modal.data("cachelistid").toString();
+    const cacheListId = args.cacheListId || modal.data("cachelistid").toString();
 
     const lists = await getSyncStorage({ lists: JSON.stringify({}) }).then(items => JSON.parse(items.lists));
     const cacheList = lists[cacheListId];
     if (!cacheList) return;
-
-    $(".itemWrapper", modal).empty();
-    $(".itemWrapper", modal).append(await Promise.all(cacheList.workIds.map(async workId => await work2item(workId))).then(d => d.join("\n")));
-    $("#myListName span.text").html(cacheList.name);
-    $("#myListName span.count").html(cacheList.workIds.length);
-    colorItemWork(modal);
+    if (Array.isArray(args.delete)) {
+        for (const workId of args.delete) {
+            const moduleTmp = $(`.itemModule.list[data-workid='${workId}']`);
+            if (moduleTmp.length > 0) moduleTmp.remove();
+        }
+        $("#myListName span.count").html(cacheList.workIds.length);
+        return;
+    } else if (args.changed) {
+        // rename
+        $("#myListName span.text").html(cacheList.name);
+    } else if (args.reset) {
+        // reset sort
+        //const sortIndexs=$("modal.viewCacheListDialog .itemModule.list").map((ind,obj)=>$(obj).data("sort-index")).toArray();
+        const itemsClone = $("modal.viewCacheListDialog .itemModule.list")
+            .sort((a, b) => $(a).data("sort-index") - $(b).data("sort-index")).clone();
+        $("modal.viewCacheListDialog .itemModule.list").each((ind, obj) => {
+            const indexTmp = $(obj).data("sort-index");
+            if (indexTmp != ind) $(obj).replaceWith(itemsClone[ind]);
+        })
+    } else {
+        $(".itemWrapper", modal).empty();
+        $(".itemWrapper", modal).append(await Promise.all(cacheList.workIds.map(async workId => await work2item(workId))).then(d => d.join("\n")));
+        $("#myListName span.count").html(cacheList.workIds.length);
+        colorItemWork(modal);
+    }
 
 }
 
@@ -869,7 +992,7 @@ const obtainList2HTML = (key, lists) =>
     </div>
         `}).join("\n");
 
-async function addMyListModal(container = $(".pageWrapper")) {
+async function addDeleteMyListModal(container = $(".pageWrapper")) {
     const workIdsTmp = $(".itemModule.list.selected", container).map((ind, obj) => $(obj).data("workid"));
     const workIds = (workIdsTmp.length > 0) ? workIdsTmp : $(".itemModule.list.selected>input", container).map((ind, obj) => $(obj).val());
     if (workIds.length == 0) return;
@@ -881,8 +1004,8 @@ async function addMyListModal(container = $(".pageWrapper")) {
 
     // modalAddMyListInが必要
     const modalId = `DIALOG${Date.now()}`
-    const modalAddMyList = `
-    <modal id="${modalId}" class="modalDialog modalDialogChEx addMyListDialog" style="overflow-y:scroll;">
+    const modaladdDeleteMyList = `
+    <modal id="${modalId}" class="modalDialog modalDialogChEx addDeleteMyListDialog" style="overflow-y:scroll;">
     <div class="modalOverlay"></div>
     <div class="generalModal" style="left: 25vw; top: 5vh; width:50vw;overflow-y:scroll;">
         <div class="titleArea">
@@ -904,21 +1027,24 @@ async function addMyListModal(container = $(".pageWrapper")) {
                 </div>
             </div>
         </div>
-        <div class="btnArea" style="vertical-align:middle;padding:0;">
-            <span><a href="javascript:void(0);" class="btnAddMyList">マイリストに追加する(${workIds.length})</a></span>
+        <div class="btnChEx1" style="vertical-align:middle;">
+            <a href="javascript:void(0);" class="btnAddMyList">マイリストに<br>追加する(${workIds.length})</a>
+        </div>
+        <div class="btnChEx1" style="vertical-align:middle;">
+            <span><a href="javascript:void(0);" class="btnDeleteMyList">マイリストから<br>削除する(${workIds.length})</a></span>
         </div>
     </div>
     </modal>`
-    $("body").append(modalAddMyList);
+    $("body").append(modaladdDeleteMyList);
     $(`#${modalId} .modalOverlay`).height(Math.max($(`#${modalId} .generalModal`).height(), window.innerHeight));
     return modalId;
 }
 
-async function remakeAddMyListModal() {
+async function remakeaddDeleteMyListModal() {
     //const shareLists = await fetch(window.COMMON.RESTAPI_ENDPOINT.getShareList).then(d => d.json()).then(res => res.data.shareList);
     const shareLists = await getSyncStorage({ shareLists: JSON.stringify({}) }).then(items => JSON.parse(items.shareLists));
     const cacheLists = await getSyncStorage({ lists: JSON.stringify({}) }).then(items => JSON.parse(items.lists));
-    const modal = $(`modal.addMyListDialog`);
+    const modal = $(`modal.addDeleteMyListDialog`);
     const form = $("div.formContainerIn form", modal);
     form.empty();
     form.append(obtainList2HTML("cache", Object.values(cacheLists)))
@@ -1142,8 +1268,285 @@ const _registFavoriteWorkOrTag = async function (idOrList, updateType) {
     return await _restPost(endpointUrl, params);
 };
 
-// -------------- from common.js ----------------
+// -------------- for drag -------------
+async function dragItemEditMode(containerIn = null) {
+    setTransit();
+    const container = containerIn || $("modal.viewCacheListDialog");
+    const compY = $("modal").length == 0 ? 0 : $(".btnSubscript", container).offset().top - $(".btnSubscript", container).position().top;
+    const _ = window.COMMON.pointerEvent;
+    const normalizeEvent = (e) => {
+        const event = e.originalEvent && e.originalEvent.touches && e.originalEvent.touches.length ? e.originalEvent.touches[0] : e;
+        e.clientX = e.clientX || event.clientX;
+        e.clientY = e.clientY || event.clientY;
+        e.pageX = e.pageX || event.pageX;
+        e.pageY = e.pageY || event.pageY;
+        e.screenX = e.screenX || event.screenX;
+        e.screenY = e.screenY || event.screenY;
+        return Object.assign(e, event);
+    };
+    const copyEvent = (e) => {
+        return $.Event(e.type, e);
+    };
+    const requestAnimationFrame =
+        // window.requestAnimationFrame ||
+        // window.webkitRequestAnimationFrame ||
+        // window.mozRequestAnimationFrame ||
+        window.setTimeout;
+    const cancelAnimationFrame =
+        // window.cancelAnimationFrame ||
+        // window.mozCancelAnimationFrame ||
+        window.clearTimeout;
+    const contentRoot = $(".itemWrapper", container);
+    const itemModule = $(".itemModule", contentRoot);
+    const editFooter = $(".editFooter", contentRoot);
+    const mybestHeader = $(".mypageHeader.mybest", container);
+    itemModule.each((index, el) => {
+        const $el = $(el);
+        if (!$el.hasClass("edit")) {
+            $el.attr("data-sort-index", index).addClass($("body").hasClass("selectAll") ? "selected" : "notSelected");
+        }
+    });
+    itemModule.filter(":not(.edit)").addClass("edit");
 
+    itemModule.filter(".mybest, .mylist").on(_.addLabel(_.addMouseEventName(_.start), ".editmode"), (e) => {
+        let event1 = normalizeEvent(e);
+        const list = $(event1.target).closest(".itemModule");
+        if (list.data("isTouch") === true) {
+            return;
+        }
+        list.data("isTouch", true);
+        let basePos = [event1.pageX, event1.pageY];
+        const listEl = list[0];
+        const listWidth = list.outerWidth();
+        const listHeight = list.outerHeight();
+        let windowHeight = window.innerHeight;
+        let documentHeight = $(document).height();
+        const editFooterHeight = editFooter.height();
+        const SCROLL_DISTANCE = 15;
+        const SCROLL_INTERVAL = 30;
+        const THROTTLE_INTERVAL = 20;
+        const THRESHOLD = 80;
+        const THRESHOLD_BOTTOM = windowHeight - editFooterHeight - THRESHOLD;
+        const SWAP_ANIME_DURATION = 500;
+        let lastEventTimestamp = 0;
+        let intervalTimerId = null;
+        const NOANIME_PARAMS = { duration: 0 };
+        let centerPointList = [];
+        const scrollTmp = window.scrollY || window.pageYOffset;
+        let distanceCheck = false;
+        list.data("isMove", false);
+
+        const scrollFunc = function (diff, direction, rate) {
+            const scrollY = window.scrollY || window.pageYOffset;
+            const isLimit = direction === "up" ? (scrollY > SCROLL_DISTANCE) : (documentHeight - windowHeight - scrollY > SCROLL_DISTANCE);
+
+            if (isLimit) {
+                const distanceIn = (SCROLL_DISTANCE + Math.floor(Math.log(Math.pow(diff, 2)))) * (direction === "up" ? 1 : -1);
+                const distance = Math.floor(distanceIn * (rate || 1));
+                window.scrollTo(0, scrollY - distance);
+                return distance;
+            } else return 0;
+        };
+        const getOffsetX = function (el) {
+            return (el.offsetLeft || 0) - parseInt(el.style.left || 0, 10);
+        };
+        const getOffsetY = function (el) {
+            return (el.offsetTop || 0) - parseInt(el.style.top || 0, 10);
+        };
+
+        const initPointList = () => {
+            return contentRoot.find(".itemModule").map((index, el) => { // centerPointList=
+                const pos = $(el).data("index", index).offset();
+                return [[pos.left + listWidth / 2, pos.top + listHeight / 2, index]];
+            }).toArray();
+        };
+
+        $(window).on("appenditem.mylist.editmode", function () {
+            windowHeight = window.innerHeight;
+            documentHeight = $(document).height();
+            centerPointList = initPointList();
+        });
+        centerPointList = initPointList();
+
+        $(window).on(_.addLabel(_.addMouseEventName(_.move), ".drag.editmode"), (e) => {
+            if (e.originalEvent && e.originalEvent.movementX === 0 && e.originalEvent.movementY === 0) {
+                // マウスが実際に移動していない場合は処理しない
+                return;
+            }
+            let event = normalizeEvent(e);
+            const mouseX = event.pageX - basePos[0];
+            const mouseY = event.pageY - basePos[1];
+            if (mouseX === 0 && mouseY === 0) {
+                // マウスが実際に移動していない場合は処理しない
+                return;
+            }
+            list.addClass("drag");
+            // イベント処理を間引く処理
+            const now = Date.now();
+            // スクロール処理ではない(ドラッグ処理)、かつイベント間隔が短い場合
+            if (!event.isTrigger && now - lastEventTimestamp < THROTTLE_INTERVAL) {
+                // スクロールタイマーが発行されている場合、一旦解除し、
+                // ドラッグの際のマウス座標をコピーして再度スクロールタイマーを発行する
+                if (intervalTimerId) {
+                    const ev = copyEvent(event);
+                    cancelAnimationFrame(intervalTimerId);
+                    intervalTimerId = requestAnimationFrame(function () {
+                        intervalTimerId = null;
+                        $(window).trigger(ev);
+                    }, SCROLL_INTERVAL);
+                }
+                return false;
+            }
+            lastEventTimestamp = now;
+            // イベント処理を間引く処理ここまで
+            //console.log(event)
+
+            // スクロール処理ではない場合(ドラッグ処理の場合)は、スクロールタイマーを解除する(あとで再発行される)
+            if (!event.isTrigger) {
+                cancelAnimationFrame(intervalTimerId);
+                intervalTimerId = null;
+            }
+            // スクロール処理ではない場合(ドラッグ処理の場合)は、スクロールタイマーを解除する(あとで再発行される)ここまで
+
+            list.data("isMove", true);
+            // 画面上下にドラッグした場合にスクロール追従させる
+            distance = 0;
+            if (event.clientY < THRESHOLD || event.clientY > THRESHOLD_BOTTOM) {
+                cancelAnimationFrame(intervalTimerId); intervalTimerId = null;
+                distance = event.clientY < THRESHOLD ? scrollFunc(THRESHOLD - event.clientY, "up", event.rate) : scrollFunc(event.clientY - THRESHOLD_BOTTOM, "down", event.rate);
+                event.pageY -= distance;
+                distanceCheck = true;
+            } else {
+                cancelAnimationFrame(intervalTimerId); intervalTimerId = null;
+            }
+            // 画面上下にドラッグした場合にスクロール追従させるここまで
+            // マウスカーソルにドラッグ中要素を追従させる
+            /* if (window.COMMON.naviDevice1 == "3") {
+                if (scrollTmp == (window.scrollY || window.pageYOffset) || distanceCheck) {
+                    $list.transitStop(true).transit({x: mouseX + "px", y: mouseY + "px"}, NOANIME_PARAMS);
+                }
+                else {
+                    clearInterval(intervalTimerId);
+                    $list.transitStop(true).transit({x: 0, y: 0, scale: 1}, {duration: 0, complete: function () {
+                        listEl.removeAttribute("style");
+                        $list.removeClass("drag");
+                    }});
+                    window.removeEventListener('touchmove', handleTouchMove, { passive: false });
+                    $(window).off(".drag.editmode appenditem.mylist.editmode");
+                    $list.removeData("isTouch");
+                    return false;
+                }
+            }
+            else {*/
+            list.transitStop(true).transit({ x: mouseX + "px", y: mouseY + "px" }, NOANIME_PARAMS);
+            //}
+            // マウスカーソルにドラッグ中要素を追従させるここまで
+
+            // ドラッグ中要素に重なっている要素を算出
+            const centerPos = centerPointList[list.data("index")];
+            const centerX = centerPos[0] + mouseX;
+            const centerY = centerPos[1] + mouseY;
+            const list2 = centerPointList.filter(val =>
+                Math.abs(centerY - val[1]) < listHeight && Math.abs(centerX - val[0]) < listWidth
+            );
+            // ドラッグ中要素に重なっている要素を算出ここまで
+
+            // ドラッグ中要素に重なっている要素から一番近い要素を算出
+            const target = list2.reduce((acc, val, index) => {
+                if (acc.length > 0) {
+                    const minDistance = acc[acc.length - 1];
+                    const distanceTmp = Math.pow(centerX - val[0], 2) + Math.pow(centerY - val[1], 2);
+                    if (minDistance > distanceTmp) {
+                        return [val, distanceTmp];
+                    } else return acc;
+                } else {
+                    return [val, Math.pow(centerX - val[0], 2) + Math.pow(centerY - val[1], 2)];
+                }
+            }, []);
+            // ドラッグ中要素に重なっている要素から一番近い要素を算出ここまで
+
+            if (target) {
+                const allList = contentRoot.find(".itemModule");
+                const targetIndex = target[0][2];
+                const $target = allList.eq(targetIndex);
+                const targetEl = $target[0];
+                const listIndex = allList.index(list);
+                if (!$target.is(list)) {
+                    // 移動が必要な要素の座標を、要素入れ替え前に保存しておく
+                    const $tmp = listIndex > targetIndex ? allList.slice(targetIndex, listIndex) : $(allList.slice(listIndex + 1, targetIndex + 1).get().reverse());
+                    $tmp.each((i, el) => {
+                        const $el = $(el);
+                        $el.data("index", $el.data("index") + (listIndex > targetIndex ? 1 : -1));
+                        const offset = $el.offset();
+                        $el.data("pos", [offset.left, offset.top - compY]); // なぜかずれるので-540?
+                    });
+                    // 移動が必要な要素の座標を、要素入れ替え前に保存しておくここまで
+
+                    // 要素を入れ替えるとドラッグ基準点がずれるので、予め入れ替えた先の座標を元にドラッグ基準点を調整
+                    const diffX = getOffsetX(targetEl) - getOffsetX(listEl);
+                    const diffY = getOffsetY(targetEl) - getOffsetY(listEl);
+                    basePos[0] += diffX;
+                    basePos[1] += diffY;
+                    const moveX = event.pageX - basePos[0];
+                    const moveY = event.pageY - basePos[1];
+                    list.transitStop(true).transit({ x: moveX + "px", y: moveY + "px" }, NOANIME_PARAMS);
+                    // 要素を入れ替えるとドラッグ基準点がずれるので、予め入れ替えた先の座標を元にドラッグ基準点を調整ここまで
+
+                    // 要素入れ替え
+                    $target[listIndex > targetIndex ? "before" : "after"](list);
+                    list.data("index", targetIndex);
+                    // 要素入れ替えここまで
+
+                    // 要素入れ替えによって、移動が必要な要素の座標が一気にずれてしまうため、
+                    // 保存しておいた座標に一時的に移動させてから、元に戻すアニメーションを行う
+                    $tmp.each((i, el) => {
+                        el.style.willChange = "transform";
+                        const $el = $(el);
+                        const beforePosTmp = $el.data("pos");
+                        const moveXTmp = beforePosTmp[0] - getOffsetX(el);
+                        const moveYTmp = beforePosTmp[1] - getOffsetY(el);
+                        $el.removeData("pos");
+                        $el.transitStop(true)
+                            .transit({ x: moveXTmp + "px", y: moveYTmp + "px" }, NOANIME_PARAMS)
+                            .transit({ x: 0, y: 0 }, {
+                                duration: SWAP_ANIME_DURATION, complete: () => {
+                                    //el.removeAttribute("style");
+                                }
+                            });
+                    });
+                    // 要素入れ替えによって、移動が必要な要素の座標が一気にずれてしまうため、
+                    // 保存しておいた座標に一時的に移動させてから、元に戻すアニメーションを行うここまで
+                }
+            }
+
+            if (distance) {
+                const eventTmp = copyEvent(event);
+                const animationStartTime = (new Date()).getTime();
+                intervalTimerId = requestAnimationFrame(function () {
+                    eventTmp.rate = (new Date().getTime() - animationStartTime) / SCROLL_INTERVAL;
+                    intervalTimerId = null;
+                    // マウスイベントを強制発行することで自動スクロールを実現する
+                    $(window).trigger(eventTmp);
+                }, SCROLL_INTERVAL);
+            }
+            return false;
+        }).one(_.addLabel(_.addMouseEventName(_.end), ".drag.editmode"), function (e) {
+            clearInterval(intervalTimerId);
+            list.transitStop(true).transit({ x: 0, y: 0, scale: 1 }, {
+                duration: 300, complete: function () {
+                    //listEl.removeAttribute("style");
+                    list.removeClass("drag");
+                }
+            });
+            $(window).off(".drag.editmode appenditem.mylist.editmode");
+            list.removeData("isTouch");
+        });
+    })
+
+}
+
+
+// -------------- from common.js ----------------
 
 
 window.COMMON = {
@@ -1312,3 +1715,60 @@ window.COMMON.showToast = function (text) {
         }
     }
 };*/
+
+function setTransit() {
+    $html = $("html");
+    // PCとスマホのホバー処理の追加
+    var isTouchDevice = "ontouchstart" in window || navigator.msMaxTouchPoints > 0;
+    $html.addClass((isTouchDevice) ? "touchDevice" : "mouseDevice");
+    window.COMMON.isTouchDevice = isTouchDevice;
+    var isPointerEnable = window.navigator.pointerEnabled;
+    var isMsPointerEnable = window.navigator.msPointerEnabled;
+    window.COMMON.pointerEvent = {
+        // スペースで区切られたイベント名に対してラベルを付加する
+        addLabel: function (eventName, label) {
+            var eventNames = eventName.split(" ");
+            return $.map(eventNames, function (e) {
+                return e + (label.indexOf(".") === 0 ? "" : ".") + label;
+            }).join(" ");
+        },
+        // SurfaceのChromeでtouchとmouseの両方を傍受する必要あり
+        addMouseEventName: function (eventName) {
+            switch (eventName) {
+                case "touchstart":
+                    eventName += " mousedown";
+                    break;
+                case "touchmove":
+                    eventName += " mousemove";
+                    break;
+                case "touchend":
+                    eventName += " mouseup";
+                    break;
+                default:
+                    break;
+            }
+            return eventName;
+        },
+        start: isPointerEnable ? "pointerdown" : isMsPointerEnable ? "MSPointerDown" : isTouchDevice ? "touchstart" : "mousedown",
+        move: isPointerEnable ? "pointermove" : isMsPointerEnable ? "MSPointerMove" : isTouchDevice ? "touchmove" : "mousemove",
+        end: isPointerEnable ? "pointerup" : isMsPointerEnable ? "MSPointerUp" : isTouchDevice ? "touchend" : "mouseup",
+        cancel: isPointerEnable ? "pointercancel" : isMsPointerEnable ? "MSPointerCancel" : "touchcancel"
+    };
+
+    $.fn.transition = $.fn.transit = $.fn.animate;
+    $.fn.transitionStop = $.fn.transitStop = $.fn.stop;
+    var hooks = [["x", "left"], ["y", "top"]];
+    $.each(hooks, function (index, hook) {
+        $.fx.step[hook[0]] = function (fx) {
+            $.cssHooks[hook[0]].set(fx.elem, fx.now + fx.unit);
+        };
+        $.cssHooks[hook[0]] = {
+            get: function (elem, computed) {
+                return $.css(elem, hook[1]);
+            },
+            set: function (elem, value) {
+                elem.style[hook[1]] = value;
+            }
+        };
+    });
+}
