@@ -32,17 +32,20 @@ $(async function () {
     await addInitialButton(null, null);
     await getSyncStorage({ expandMode: "", colorSettings: colorSettingsString }).then(async items => {
         const expandMode = items.expandMode;
-        await expandPage(expandMode);
         const colorSettings = JSON.parse(items.colorSettings);
         if (colorSettings.workIsColored) await colorItemWork();
+        await expandPage(expandMode);
     })
     if (location.href.indexOf("://anime.dmkt-sp.jp/animestore/mpa_shr_pc?shareListId=") != -1) {
-        $(".pageWrapper > div.headerSubTab > ul > li.current > a").attr({ href: "mpa_mylists_pc"}).css({cursor:"pointer", "pointer-events":"auto"});
+        $(".pageWrapper > div.headerSubTab > ul > li.current > a").attr({ href: "mpa_mylists_pc" }).css({ cursor: "pointer", "pointer-events": "auto" });
     }
-    await sortLists({initial:true});
+    const url_mode_initial = obtainUrlMode();
+    if (/viewList/.test(url_mode_initial)) {
+        await sortLists({ initial: true });
+        await setSortLists();
+    }
     //await saveFavorites();
     await saveShareLists();
-    await setSortLists();
 
     document.addEventListener("click", async function (e) {
         const url_mode = obtainUrlMode();
@@ -92,7 +95,7 @@ $(async function () {
             await showCacheList();
         } else if ($(e.target).is(".btnOtherMenu")) {
             const IsViewList = $(e.target).is(".aboutViewList");
-            const workIsSelected = $(".itemModule.list.selected>input", container).length > 0;
+            const workIsSelected = $(".itemModule.selected>input", container).length > 0; // list & mylist
             otherMenuModal({ IsViewList, workIsSelected });
         } else if ($(e.target).is(".btnExpandPage")) {
             // expand items
@@ -179,7 +182,7 @@ $(async function () {
                     const format = $(".selectExportCacheList", $(e.target).parents(".generalModal")).val();
                     const obtainExportIds = {
                         "10": async () => Object({
-                            cache: await getSyncStorage({ lists: JSON.stringify({}) }).then(items => JSON.parse(items.lists).map(list => list.listId)),
+                            cache: await getSyncStorage({ lists: JSON.stringify({}) }).then(items => JSON.parse(items.lists)).then(lists => Object.keys(lists)),
                             share: []
                         }),
                         "11": async () => Object.assign(...["cache", "share"]
@@ -241,10 +244,14 @@ $(async function () {
 
 const triggerDrag = async (args = { IsEdit, mode }) => {
     const mode_dic = {
-        viewList: { class: "mylist", wrapper: ".pageWrapper",
-            remakeFunc: async () => await sortLists({initial:true}) },
-        viewCacheListDialog: { class: "list", wrapper: "modal.viewCacheListDialog",
-            remakeFunc: async () => await remakeWorksOfCacheListModal({ reset: true }) }
+        viewList: {
+            class: "mylist", wrapper: ".pageWrapper",
+            remakeFunc: async () => await sortLists({ initial: true })
+        },
+        viewCacheListDialog: {
+            class: "list", wrapper: "modal.viewCacheListDialog",
+            remakeFunc: async () => await remakeWorksOfCacheListModal({ reset: true })
+        }
     }
     if (Object.keys(mode_dic).indexOf(args.mode) == -1) return;
     if (args.IsEdit) await dragItemEditMode($(mode_dic[args.mode].wrapper));
@@ -309,7 +316,7 @@ async function createNewList(listName = "") {
     if (RegExp(`^${GLOBAL_cache_prefix}`).test(listName)) {
         let lists = await getSyncStorage({ lists: JSON.stringify({}) }).then(items => JSON.parse(items.lists));
         const listId = `${GLOBAL_cache_prefix}${Date.now()}`;
-        const newList = { madeDate: Date.now(), name: listName, exportIds: [], workIds: [], listId: listId };
+        const newList = { madeDate: Date.now(), name: listName, others: {}, workIds: [], listId: listId };
         lists[listId] = newList;
         await setSyncStorage({ lists: JSON.stringify(lists) });
         return { listId, lists };
@@ -487,25 +494,26 @@ async function addInitialButton(url_modeIn = null, areaIn = null) {
                 .append("名称/順番確定").css({ width: "15%" }),
             other: $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnOtherMenu aboutCacheList" })
                 .append("その他").css({ width: "15%" }),
-            delete: $("<a>", { href: "javascript:void(0)", class: "btnDelete", id:"sharelistDel" })
-            .append("削除").css({ width: "13%", float: "left" })
+            delete: $("<a>", { href: "javascript:void(0)", class: "btnDelete", id: "sharelistDel" })
+                .append("削除").css({ width: "13%", float: "left" })
         }
         Object.values(btns).map(btn => editArea.append(btn));
         $("a.btnCancel", editArea).css({ width: "13%" });
     } else if (["viewList"].some(d => url_mode.indexOf(d) != -1)) {
-        const btns ={
+        const btns = {
             copy: $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnCopyList" })
                 .append("合成").css({ width: "10%" }),
-        copyCache: $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnCopyList aboutCache" })
-            .append("合成(Cache)").css({ width: "13%" }),
-        decide : $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnDecideList" })
-            .append("順番決定").css({ width: "13%" }),
-        other: $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnOtherMenu aboutViewList" })
-            .append("その他").css({ width: "10%" }),
-        delete: $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnDeleteCacheList" })
-            .append("削除").css({ width: "13%" })}
+            copyCache: $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnCopyList aboutCache" })
+                .append("合成(Cache)").css({ width: "13%" }),
+            decide: $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnDecideList" })
+                .append("順番決定").css({ width: "13%" }),
+            other: $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnOtherMenu aboutViewList" })
+                .append("その他").css({ width: "10%" }),
+            delete: $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnDeleteCacheList" })
+                .append("削除").css({ width: "13%" })
+        }
 
-        Object.values(btns).forEach(btn=>editArea.append(btn));
+        Object.values(btns).forEach(btn => editArea.append(btn));
 
         $("a.btnDelete", editArea).remove();
         $("a.btnCancel", editArea).css({ width: "13%" });
@@ -560,7 +568,7 @@ async function addInitialButton(url_modeIn = null, areaIn = null) {
     }
 }
 
-async function showCacheList(args={container: null, IsPrepended : true}) {
+async function showCacheList(args = { container: null, IsPrepended: true }) {
     const container = args.container || $(".pageWrapper");
     $("div.openCacheList.itemModule.mylist").remove();
     const cacheLists = await getSyncStorage({ lists: JSON.stringify({}) }).then(items => JSON.parse(items.lists));
@@ -589,40 +597,42 @@ async function showCacheList(args={container: null, IsPrepended : true}) {
             <div class="selectedImg">マイリストを削除</div>
         </div>`
         if (args.IsPrepended) wrapper.prepend(itemHTML);
-        else wrapper.append(itemHTML)
+        else wrapper.append(itemHTML);
     })
+    //$("img.lazyload").lazyload();
+
 }
 
-async function sortLists(args={initial:false}){
-    const sortListIndexes= await getSyncStorage({sortListIndex:JSON.stringify({})}).then(items=>JSON.parse(items.sortListIndex));
-    const listDOMs=$(".pageWrapper .itemModule.mylist");
-    inds=listDOMs.clone().map((ind,obj)=>sortListIndexes[$("input[type='hidden']", obj).val()] )
-    const listClone=listDOMs.clone().slice().sort((a,b)=>{
-        const indexes=[a,b].map(d=>$("input[type='hidden']", d).val())
-            .map(d=> sortListIndexes[d] || 0);
-        return indexes[0]-indexes[1];
+async function sortLists(args = { initial: false }) {
+    const sortListIndexes = await getSyncStorage({ sortListIndex: JSON.stringify({}) }).then(items => JSON.parse(items.sortListIndex));
+    const listDOMs = $(".pageWrapper .itemModule.mylist");
+    inds = listDOMs.clone().map((ind, obj) => sortListIndexes[$("input[type='hidden']", obj).val()])
+    const listClone = listDOMs.clone().slice().sort((a, b) => {
+        const indexes = [a, b].map(d => $("input[type='hidden']", d).val())
+            .map(d => sortListIndexes[d] || 0);
+        return indexes[0] - indexes[1];
     }).toArray();
-    if (args.initial){
-        listDOMs.each((ind,obj)=>{
-            const idTmp=$("input[type='hidden']", obj).val();
-            if (ind!=sortListIndexes[idTmp]) $(obj).replaceWith(listClone[ind]);
+    if (args.initial) {
+        listDOMs.each((ind, obj) => {
+            const idTmp = $("input[type='hidden']", obj).val();
+            if (ind != sortListIndexes[idTmp]) $(obj).replaceWith(listClone[ind]);
         });
         /*const wrapper=$(".pageWrapper .itemWrapper");
         wrapper.empty();
         wrapper.append(listClone.map(d=>$(d).prop("outerHTML")).join("\n") )*/
         return;
     }
-    listDOMs.each((ind,obj)=>{
-        const indexTmp=$(obj).data("sort-index");
-        if ($(obj).data("sort-index")==null) $(obj).replaceWith(listClone[ind]);
-        else if (indexTmp!=ind) $(obj).replaceWith(listClone[ind]);
+    listDOMs.each((ind, obj) => {
+        const indexTmp = $(obj).data("sort-index");
+        if ($(obj).data("sort-index") == null) $(obj).replaceWith(listClone[ind]);
+        else if (indexTmp != ind) $(obj).replaceWith(listClone[ind]);
     })
 }
 
-async function setSortLists(){
-    const sortIndexes=Object.assign(...$(".pageWrapper .itemModule.mylist")
-        .map((ind, obj)=> ({[$("input[type='hidden']", obj).val()]: ind}) ).toArray());
-    await setSyncStorage({sortListIndex:JSON.stringify(sortIndexes)});
+async function setSortLists() {
+    const sortIndexes = Object.assign(...$(".pageWrapper .itemModule.mylist")
+        .map((ind, obj) => ({ [$("input[type='hidden']", obj).val()]: ind })).toArray());
+    await setSyncStorage({ sortListIndex: JSON.stringify(sortIndexes) });
 }
 
 function toggleEdit(container, editMode) {
@@ -661,26 +671,28 @@ async function expandPage(btnClass = "All") {
     const pageRange = obtainRange[expandMode];
     if (!pageRange) return;
 
-    const itemHTMLs = await Promise.all([...Array(pageRange.length).keys()].map(d => d + pageRange.first).map(async pageNum => {
-        const content = await obtainStreamBody(`${urlBase}${pageNum}`);
-        return $("div.itemWrapper.clearfix", content).html();
-    }));
     $(`.btnExpandPage.${expandMode}`).css({ color: "orange" });
-    $(".pageWrapper div.itemWrapper.clearfix").append($("<div>", { class: `itemForExpand ${expandMode}` }).append(itemHTMLs.join("\n")));
+    const divForExpand = $("<div>", { class: `itemForExpand ${expandMode}` });
+    $(".pageWrapper div.itemWrapper.clearfix").append(divForExpand);
+
+    for (const pageNum of [...Array(pageRange.length).keys()].map(d => d + pageRange.first)) {
+        const content = await obtainStreamBody(`${urlBase}${pageNum}`);
+        const workIdsTmp = $("div.itemWrapper.clearfix .itemModule.list", content).map((ind, obj) => $(obj).data("workid"));
+        const workIds = (workIdsTmp.length > 0) ? workIdsTmp.toArray().map(d => d.toString()) :
+            $("div.itemWrapper.clearfix .itemModule.list>input", content).map((ind, obj) => $(obj).val()).toArray();
+        const BGColors = await obtainWorkBGColors(workIds);
+        const itemHTML = $("div.itemWrapper.clearfix .itemModule.list", content).map((ind, obj) => {
+            return $(obj).css({ background: BGColors[ind] }).prop("outerHTML");
+        }).toArray().join("\n");
+        $("div.itemForExpand").append(itemHTML);
+    };
     const itemCount = $("div.itemWrapper.clearfix .itemModule.list").length;
     $(".pageWrapper div.mypageHeader div.btnSelectToggle.formContainer label span.count").text(itemCount);
     await setSyncStorage({ expandMode: expandMode });
 }
 
-async function colorItemWork(wrapperIn = null) {
-    const wrapper = wrapperIn || $(".pageWrapper .itemWrapper");
-    const itemModules = $(".itemModule.list", wrapper);
-    if (itemModules.length == 0) return;
-
+const obtainWorkBGColors = async (workIds) => {
     const items = await getSyncStorage({ lists: JSON.stringify({}) });
-    const workIdsTmp = $(".itemModule.list", wrapper).map((ind, obj) => $(obj).data("workid"));
-    const workIds = (workIdsTmp.length > 0) ? workIdsTmp.toArray().map(d => d.toString()) :
-        $(".itemModule.list>input", wrapper).map((ind, obj) => $(obj).val()).toArray();
     const favWorkIds = await fetch(window.COMMON.RESTAPI_ENDPOINT.getMyListStatus + "?targetFlag=10&workIdList=" + workIds.join("_")).then(d => d.json())
         .then(d => d.data.statusList.filter(d => d.favoriteStatus == "1").map(d => d.workId))
     const shareWorkIds = await fetch(window.COMMON.RESTAPI_ENDPOINT.getMyList).then(d => d.json()).then(d => d.data.workList.map(d => d.workId))
@@ -689,12 +701,27 @@ async function colorItemWork(wrapperIn = null) {
         "cache": { color: "lightgreen", workIds: Object.values(JSON.parse(items.lists)).map(list => list.workIds).flat() },
         "share": { color: "lightblue", workIds: shareWorkIds }
     }
-    itemModules.each((ind, obj) => {
-        const workIdTmp = workIds[ind];
+    return workIds.map(workIdTmp => {
         const colors = Object.entries(ListColors).filter(kv => kv[1].workIds.indexOf(workIdTmp) != -1).map(kv => kv[1].color);
         if (colors && colors.length > 0) {
-            $(obj).css({ background: `linear-gradient(-135deg, ${colors.join(",")}, 70%, white 100%)` })
-        }
+            return `linear-gradient(-135deg, ${colors.join(",")}, 70%, white 100%)`;
+        } else return "";
+    })
+}
+
+async function colorItemWork(args = { wrapper: null }) {
+    const wrapper = args.wrapper || $(".pageWrapper .itemWrapper");
+    const itemModules = $(".itemModule.list", wrapper);
+    if (itemModules.length == 0) return;
+
+    const workIdsTmp = $(".itemModule.list", wrapper).map((ind, obj) => $(obj).data("workid"));
+    const workIds = (workIdsTmp.length > 0) ? workIdsTmp.toArray().map(d => d.toString()) :
+        $(".itemModule.list>input", wrapper).map((ind, obj) => $(obj).val()).toArray();
+
+    const BGColors = await obtainWorkBGColors(workIds);
+    itemModules.each((ind, obj) => {
+        const BGColor = BGColors[ind];
+        $(obj).css({ background: BGColor });
     })
 }
 
@@ -902,7 +929,6 @@ async function viewWorksOfCacheListModal(cacheListId) {
                     <div class="btnEdit"><a href="javascript:void(0);">編集する<i class="icon iconEdit"></i></a></div>
                 </div>
                 <div class="itemWrapper clearfix">
-                    ${await Promise.all(cacheList.workIds.map(async workId => await work2item(workId))).then(d => d.join("\n"))}
                 </div>
                 <div id="loader" class="loader" style="display: none;"><span></span></div>
                 <div class="btnSubscript">
@@ -914,13 +940,25 @@ async function viewWorksOfCacheListModal(cacheListId) {
         </div>
     </div>
     </modal>`
+    //${await Promise.all(cacheList.workIds.map(async workId => await work2item(workId))).then(d => d.join("\n"))}
     $("body").append(modalHTML);
     const modalGeneral = $(`#${modalId} .generalModal`);
     $("div.titleArea, div.mypageHeader", modalGeneral)
         .each((ind, obj) => $(obj).attr({ style: `position:-webkit-sticky;top:${$(obj).position().top}px; position:sticky; background:rgba(255,255,255,0.9); z-index:1000;` }));
-    colorItemWork(modalGeneral);
     modalGeneral.append($(".editFooter").clone());
     addInitialButton("viewCacheListDialog", modalGeneral);
+
+    const worksLength = cacheList.workIds.length;
+    const BGColors = await obtainWorkBGColors(cacheList.workIds);
+    for (const cycle of [...Array(Math.floor(worksLength / 10) + 1).keys()]) {
+        const rangeTmp = [cycle * 10, Math.min((cycle + 1) * 10, worksLength)];
+        const itemsTmp = await Promise.all(cacheList.workIds.slice(rangeTmp[0], rangeTmp[1])
+            .map(async (workId, ind) => {
+                const BGColor = BGColors[ind];
+                return await work2item(workId).then(d => $(d).css({ background: BGColor }).prop("outerHTML"));
+            })).then(d => d.join("\n"));
+        $(`#${modalId} .itemWrapper.clearfix`).append(itemsTmp);
+    }
     $(`#${modalId} .modalOverlay`).height(Math.max(modalGeneral.height() + 250, window.innerHeight));
 }
 
@@ -949,14 +987,22 @@ async function remakeWorksOfCacheListModal(args = {}) {
         $("modal.viewCacheListDialog .itemModule.list").each((ind, obj) => {
             const indexTmp = $(obj).data("sort-index");
             if (indexTmp != ind) $(obj).replaceWith(itemsClone[ind]);
+            //$("img.lazyload").lazyload();
         })
     } else {
         $(".itemWrapper", modal).empty();
-        $(".itemWrapper", modal).append(await Promise.all(cacheList.workIds.map(async workId => await work2item(workId))).then(d => d.join("\n")));
+        const BGColors = await obtainWorkBGColors(cacheList.workIds);
+        for (const kv of Object.entries(cacheList.workIds)) {
+            const workId = kv[1];
+            const BGColor = BGColors[kv[0]];
+            const itemTmp = await work2item(workId);
+            $(`#${modalId} .itemWrapper.clearfix`).append(itemTmp.css({ background: BGColor }));
+        }
+        //$(".itemWrapper", modal).append(await Promise.all(cacheList.workIds.map(async workId => await work2item(workId))).then(d => d.join("\n")));
         $("#myListName span.count").html(cacheList.workIds.length);
-        colorItemWork(modal);
+        //$("img.lazyload").lazyload();
+        //colorItemWork({ wrapper: modal });
     }
-
 }
 
 const obtainList2HTML = (key, lists) =>
@@ -1268,7 +1314,6 @@ const _registFavoriteWorkOrTag = async function (idOrList, updateType) {
 async function dragItemEditMode(containerIn = null) {
     setTransit();
     const container = containerIn || $("modal.viewCacheListDialog");
-    const compY = $("modal").length == 0 ? 0 : $(".btnSubscript", container).offset().top - $(".btnSubscript", container).position().top;
     const _ = window.COMMON.pointerEvent;
     const normalizeEvent = (e) => {
         const event = e.originalEvent && e.originalEvent.touches && e.originalEvent.touches.length ? e.originalEvent.touches[0] : e;
@@ -1305,7 +1350,7 @@ async function dragItemEditMode(containerIn = null) {
     itemModule.filter(":not(.edit)").addClass("edit");
 
     itemModule.filter(".mybest, .mylist").on(_.addLabel(_.addMouseEventName(_.start), ".editmode"), (e) => {
-        let event1 = normalizeEvent(e);
+        const event1 = normalizeEvent(e);
         const list = $(event1.target).closest(".itemModule");
         if (list.data("isTouch") === true) {
             return;
@@ -1363,7 +1408,8 @@ async function dragItemEditMode(containerIn = null) {
             centerPointList = initPointList();
         });
         centerPointList = initPointList();
-
+        const compY = $("modal").length == 0 ? 0 : $(".itemWrapper", container).offset().top;
+        //console.log(compY, $(".btnSubscript", container).offset().top, $(container).innerHeight(), $(".itemWrapper", container).innerHeight())
         $(window).on(_.addLabel(_.addMouseEventName(_.move), ".drag.editmode"), (e) => {
             if (e.originalEvent && e.originalEvent.movementX === 0 && e.originalEvent.movementY === 0) {
                 // マウスが実際に移動していない場合は処理しない
