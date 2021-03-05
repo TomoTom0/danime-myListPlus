@@ -23,7 +23,7 @@ document.addEventListener("click", async function(e){
         chrome.storage.sync.set({ lists: JSON.stringify({})})
     }  else if (e_class.indexOf("btnCheck3")!=-1){
         const items = await getSyncStorage({ lists: JSON.stringify({}), sortListIndex:JSON.stringify({})});
-        console.log(JSON.parse(items.sortListIndex))
+        console.log(items)
         console.log(JSON.parse(items.lists))
     }
 })
