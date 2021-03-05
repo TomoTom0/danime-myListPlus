@@ -64,11 +64,11 @@ $(async function () {
         } else if ($(e.target).is(".btnOpenNewMyList")) {
             createMyListModal();
         } else if ($(e.target).is(".btnOtherMenu")) {
-            const IsViewList = $(e.target).is(".aboutViewList");
+            const locate = $(e.target).attr("class").match(/(?<=about)\S+/)[0];
             const workIsSelected = $("div.itemModule.selected>input", container).length > 0; // list & mylist
-            otherMenuModal({ IsViewList, workIsSelected });
+            otherMenuModal({ locate, workIsSelected });
         }
-        // ------------ create --------------
+        // ------------ operate --------------
         else if ($(e.target).is(".btnOperateFav")) {
             if ($("div.itemModule.list.selected", container).length == 0) return;
             const workIdsTmp = $("div.itemModule.list.selected", container).map((ind, obj) => $(obj).data("workid"));
@@ -109,7 +109,8 @@ $(async function () {
 
             await deleteList(selectedListIds);
             toggleEdit(container, false);
-            await showCacheList();
+            if (selectedListIds.share.length>0) location.reload();
+            else if (selectedListIds.cache.length>0) await showCacheList();
         } else if ($(e.target).is(".btnExpandPage")) {
             // expand items
             await expandPage($(e.target).attr("class"));
@@ -414,7 +415,7 @@ async function addInitialButton(args = { url_mode: null, area: null }) {
             addDelete: $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnOpenAddDeleteMyList" })
                 .append("リストに追加/削除").css({ width: "19%" }),
             rename: $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnDecideCacheList" })
-                .append("名称/順番確定").css({ width: "15%" }),
+                .append("名前/順番確定").css({ width: "15%" }),
             other: $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnOtherMenu aboutCacheList" })
                 .append("その他").css({ width: "15%" }),
             delete: $("<a>", { href: "javascript:void(0)", class: "btnDelete", id: "sharelistDel" })
@@ -442,19 +443,26 @@ async function addInitialButton(args = { url_mode: null, area: null }) {
         $("a.btnCancel", editArea).css({ width: "13%" });
         await showCacheList();
     } else if (["viewFav"].some(d => url_mode.indexOf(d) != -1)) {
-        const addBtn = $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnOpenAddDeleteMyList" })
-            .append("リストに追加/削除");
-        const favBtn = $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnOperateFav Delete" })
-            .append("気になるから削除");
-        editArea.append(addBtn).append(favBtn);
+        const btns = {
+            add:$("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnOpenAddDeleteMyList" })
+                .append("リストに追加/削除").css({ width: "20%" }),
+            fav:$("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnOperateFav Delete" })
+                .append("気になるに削除").css({ width: "17%" }),
+            other: $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnOtherMenu aboutWorks" })
+                .append("その他").css({ width: "13%" })};
+        Object.values(btns).map(btn=>editArea.append(btn));
         $("a.btnDelete", editArea).css({ width: "13%", float: "left" });
         $("a.btnCancel", editArea).css({ width: "13%" });
     } else {
-        const addBtn = $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnOpenAddDeleteMyList" })
-            .append("リストに追加/削除");
-        const favBtn = $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnOperateFav Add" })
-            .append("気になるに追加");
-        editArea.append(addBtn).append(favBtn);
+        const btns = {
+            add:$("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnOpenAddDeleteMyList" })
+                .append("リストに追加/削除").css({ width: "20%" }),
+            fav:$("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnOperateFav Add" })
+                .append("気になるに追加").css({ width: "17%" }),
+            other: $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnOtherMenu aboutWorks" })
+                .append("その他").css({ width: "13%" })};
+
+        Object.values(btns).map(btn=>editArea.append(btn));
         $("a.btnDelete", editArea).css({ width: "13%", float: "left" });
         $("a.btnCancel", editArea).css({ width: "13%" });
     }
@@ -657,7 +665,7 @@ async function saveShareLists(shareListIdsIn = null) {
                 .then(d => d.json())
                 .then(d => ({ workIds: d.data.workList.map(work => work.workId), name: d.data.shareListName, listId: listId }))
         })))
-        .then(dics => ({ ...dics })); // Object.assign( ...[])はerror
+        .then(dics => (Object.assign(...dics.concat({})))); // Object.assign( ...[])はerror
     const shareListsOld = (!shareListIdsIn) ? {} :
         await getSyncStorage({ shareLists: JSON.stringify({}) }).then(items => JSON.parse(items.shareLists));
     await setSyncStorage({ shareLists: JSON.stringify(Object.assign(shareListsOld, shareLists)) });
@@ -732,8 +740,9 @@ async function autoSplitedList(coreNameIn, workIds, IsCached = false) {
     }
 }
 
-async function createNewList(listName = "") {
-    if (RegExp(`^${GLOBAL_cache_prefix}`).test(listName)) {
+async function createNewList(listNameIn = "") {
+    if (RegExp(`^${GLOBAL_cache_prefix}`).test(listNameIn)) {
+        const listName=listNameIn || "noListName";
         let lists = await getSyncStorage({ lists: JSON.stringify({}) }).then(items => JSON.parse(items.lists));
         const listId = `${GLOBAL_cache_prefix}${Date.now()}`;
         const newList = { madeDate: Date.now(), name: listName, others: {}, workIds: [], listId: listId };
@@ -741,7 +750,12 @@ async function createNewList(listName = "") {
         await setSyncStorage({ lists: JSON.stringify(lists) });
         return { listId, lists };
     } else {
-        return await _createShareList(listName.slice(0, 10) || "noListName", true, "").then(d => ({ listId: d.shareListId }));
+        const listName=listNameIn.slice(0, 10) || "noListName";
+        const shareListId= await _createShareList(listName, true, "").then(d => d.shareListId );
+        let shareLists=await getSyncStorage({ shareLists: JSON.stringify({}) }).then(items => JSON.parse(items.shareLists));
+        shareLists[shareListId]={name:listName, workIds:[], listId:shareListId};
+        await setSyncStorage({ shareLists: JSON.stringify(shareLists) });
+        return {listId: shareListId, shareLists:shareLists};
     }
 }
 
@@ -757,6 +771,7 @@ async function deleteList(selectedLists = { cache: [], share: [] }) {
                 .map(list => ({ [list.listId]: list })).concat({}))
         })));
 
+    console.log(selectedLists, filteredLists)
     if (selectedLists.cache.length > 0) {
         await setSyncStorage({ lists: JSON.stringify(filteredLists.cache) });
     };
@@ -855,55 +870,8 @@ const obtainStreamBody = async (url) => {
 
 // ------------------ about Modal -------------------
 
-async function otherMenuModal(args = { IsViewList: false, workIsSelected: false }) {
-    const argsStr = Object.values(args).map(d => d - 0).join("");
-    const obtainVariable = {
-        "10": { textEx: `すべてのCacheリストをエクスポートします。`, optionIm: [] },
-        "11": { textEx: `指定されたCacheリストをエクスポートします。`, optionIm: [["selected", "選択されたリストに"]] },
-        "00": { textEx: `現在のCacheリストをエクスポートします。`, optionIm: [["present", "現在のリストに"]] },
-        "01": { textEx: `現在のCacheリストをエクスポートします。`, optionIm: [["present", "現在のリストに"]] }
-    }
-    // for Export Button
-    const divExport = $("<li>", { style: "padding:10px;" });
-    const headingExport = $("<p>", { class: "h2", style: "text-align:-10px" }).append($("<b>").append("Export List"));
-    const btnExport = $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnExportCacheList" }).append("エクスポート");
-    const textExport = $("<p>", { class: "" }).append(obtainVariable[argsStr].textEx);
-    const selectExport = $("<select>", { class: "selectExportCacheList" });
-    const optionsContentExport = [["json で", "json"], ["csv で", "csv"], ["tsv で", "tsv"]];
-    optionsContentExport.forEach(tv => {
-        const option = $("<option>").text(tv[0]).val(tv[1]);
-        selectExport.append(option);
-    });
-    divExport.append(headingExport).append(btnExport).append(textExport).append(selectExport);
-
-    // for Import Button
-    const divImport = $("<li>", { style: "padding:10px;" });
-    const headingImport = $("<p>", { class: "h2", style: "text-align:-10px" }).append($("<b>").append("Import List"));
-    const textImport = $("<span>").append(`jsonからCacheリストをインポートします。`);
-    const btnImport = $("<a>", { href: "javascript:void(0);", class: "btnChEx1 btnImportCacheList" }).append("インポート");
-    const importFile = $("<input>", { type: "file", accept: ".csv,.json", class: "inputImportCacheList", mulitple: "" });
-    const selectImport = $("<select>", { class: "check_importToSelectedList" });
-    const optionContentImport = [["cache", "新しいCacheリストに"], ["share", "新しいマイリストに"]];
-    const additionnalOptions = obtainVariable[argsStr].optionIm;
-    [...optionContentImport, ...additionnalOptions].forEach(vt => {
-        const option = $("<option>").val(vt[0]).text(vt[1]);
-        selectImport.append(option);
-    })
-    divImport.append(headingImport).append(btnImport).append(textImport).append("<br>").append(importFile).append("<br>").append(selectImport);
-
-    // Favorite
-    const divFav = $("<li>", { style: "padding:10px;" });
-    const favIsValid = !args.IsViewList && args.workIsSelected;
-    if (favIsValid) {
-        const favBtn = {
-            add: $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnOperateFav Add" })
-                .append("気になるに追加"),
-            delete: $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnOperateFav Delete" })
-                .append("気になるから削除")
-        }
-        divFav.append(favBtn.add).append(favBtn.delete);
-    }
-
+async function otherMenuModal(args = { locate:"ViewList", workIsSelected: false }) {
+    const argsStr = [args.locate=="ViewList" ? 1 : 0, args.workIsSelected-0].join("");
     // modal
     const modalId = `DIALOG${Date.now()}`
     const modalHTML = $(`
@@ -923,8 +891,60 @@ async function otherMenuModal(args = { IsViewList: false, workIsSelected: false 
                 </div>
             </div>
         </div>
-    </modal>`)
-    $("ul", modalHTML).append(divExport).append(divImport).append(favIsValid ? divFav : "");
+    </modal>`);
+    
+
+    const obtainVariable = {
+        ViewList: args.workIsSelected ? 
+            { textEx: `すべてのCacheリストをエクスポートします。`, optionIm: [] } :
+            { textEx: `指定されたCacheリストをエクスポートします。`, optionIm: [["selected", "選択されたリストに"]] },
+        CacheList: { textEx: `現在のCacheリストをエクスポートします。`, optionIm: [["present", "現在のリストに"]] }
+    }
+    if (["ViewList", "CacheList"].indexOf(args.locate)!=-1){
+        // for Export Button
+        const divExport = $("<li>", { style: "padding:10px;" });
+        const headingExport = $("<p>", { class: "h2", style: "text-align:-10px" }).append($("<b>").append("Export List"));
+        const btnExport = $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnExportCacheList" }).append("エクスポート");
+        const textExport = $("<p>", { class: "" }).append(obtainVariable[args.locate].textEx);
+        const selectExport = $("<select>", { class: "selectExportCacheList" });
+        const optionsContentExport = [["json で", "json"], ["csv で", "csv"], ["tsv で", "tsv"]];
+        optionsContentExport.forEach(tv => {
+            const option = $("<option>").text(tv[0]).val(tv[1]);
+            selectExport.append(option);
+        });
+        divExport.append(headingExport).append(btnExport).append(textExport).append(selectExport);
+
+        // for Import Button
+        const divImport = $("<li>", { style: "padding:10px;" });
+        const headingImport = $("<p>", { class: "h2", style: "text-align:-10px" }).append($("<b>").append("Import List"));
+        const textImport = $("<span>").append(`jsonからCacheリストをインポートします。`);
+        const btnImport = $("<a>", { href: "javascript:void(0);", class: "btnChEx1 btnImportCacheList" }).append("インポート");
+        const importFile = $("<input>", { type: "file", accept: ".csv,.json", class: "inputImportCacheList", mulitple: "" });
+        const selectImport = $("<select>", { class: "check_importToSelectedList" });
+        const optionContentImport = [["cache", "新しいCacheリストに"], ["share", "新しいマイリストに"]];
+        const additionnalOptions = obtainVariable[args.locate].optionIm;
+        [...optionContentImport, ...additionnalOptions].forEach(vt => {
+            const option = $("<option>").val(vt[0]).text(vt[1]);
+            selectImport.append(option);
+        })
+        divImport.append(headingImport).append(btnImport).append(textImport).append("<br>").append(importFile).append("<br>").append(selectImport);
+        $(`ul`, modalHTML).append(divExport).append(divImport);
+    }
+
+    // Favorite
+    const divFav = $("<li>", { style: "padding:10px;" });
+    const favIsValid = args.locate!="ViewList" && args.workIsSelected;
+    if (favIsValid) {
+        const favBtn = {
+            add: $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnOperateFav Add" })
+                .append("気になるに追加"),
+            delete: $("<a>", { href: "javascript:void(0)", class: "btnChEx1 btnOperateFav Delete" })
+                .append("気になるから削除")
+        }
+        divFav.append(favBtn.add).append(favBtn.delete);
+        $(`ul`, modalHTML).append(divFav);
+    }
+    if ($(`ul`, modalHTML).html().replace(/\s/g, "").length==0) return;
     $("body").append(modalHTML);
     $(`#${modalId} .modalOverlay`).height(Math.max($(`#${modalId} .generalModal`).height(), window.innerHeight));
     return modalId;
@@ -1109,7 +1129,7 @@ const obtainList2HTML = (key, lists) =>
         const listCount = (IsShare) ? list.count : list.workIds.length;*/
         const listId = list.listId;
         const listName = list.name;
-        const listCount = list.workIds.length;
+        const listCount = (list.workIds||[]).length;
         return `
     <div class="checkboxList clearfix">
         <a href="javascript:$('.${key}list_${ind}').toggleClass('on');">
@@ -1136,17 +1156,16 @@ async function addDeleteMyListModal(container = $("div.pageWrapper")) {
     if (workIds.length == 0) return;
     //const shareLists = await fetch(window.COMMON.RESTAPI_ENDPOINT.getShareList).then(d => d.json()).then(res => res.data.shareList);
     const shareLists = await getSyncStorage({ shareLists: JSON.stringify({}) }).then(items => JSON.parse(items.shareLists));
-
     const cacheLists = await getSyncStorage({ lists: JSON.stringify({}) }).then(items => JSON.parse(items.lists));
 
     // modalAddMyListInが必要
     const modalId = `DIALOG${Date.now()}`
-    const modaladdDeleteMyList = `
+    const modaladdDeleteMyList = $(`
     <modal id="${modalId}" class="modalDialog modalDialogChEx addDeleteMyListDialog" style="overflow-y:scroll;">
     <div class="modalOverlay"></div>
     <div class="generalModal" style="left: 25vw; top: 5vh; width:50vw;overflow-y:scroll;">
         <div class="titleArea">
-            <div class="title">マイリストに追加</div>
+            <div class="title">リストに追加</div>
             <div class="closeBtn btnCloseModal"><i class="icon iconCircleClose"></i></div>
         </div>
         <div class="modalAddMyListIn">
@@ -1159,19 +1178,22 @@ async function addDeleteMyListModal(container = $("div.pageWrapper")) {
                             ${obtainList2HTML("cache", Object.values(cacheLists))}
                             ${obtainList2HTML("share", Object.values(shareLists))}
                         </form>
-                        <div><a href="javascript:void(0);" class="btnArea btnOpenNewMyList">新しいマイリストを作成</a><i class="icon iconCircleAdd"></i></div>
+                        <div><a href="javascript:void(0);" class="btnArea btnOpenNewMyList">新しいリストを作成</a><i class="icon iconCircleAdd"></i></div>
                     </div>
                 </div>
             </div>
         </div>
-        <div class="btnChEx1" style="vertical-align:middle;">
-            <a href="javascript:void(0);" class="btnAddMyList">マイリストに<br>追加する(${workIds.length})</a>
-        </div>
-        <div class="btnChEx1" style="vertical-align:middle;">
-            <span><a href="javascript:void(0);" class="btnDeleteMyList">マイリストから<br>削除する(${workIds.length})</a></span>
+        <div style="float:middle;
+        ">
+            <div class="btnChEx1" style="">
+                <a href="javascript:void(0);" class="btnAddMyList">リストに<br>追加する(${workIds.length})</a>
+            </div>
+            <div class="btnChEx1" style="">
+                <span><a href="javascript:void(0);" class="btnDeleteMyList">リストから<br>削除する(${workIds.length})</a></span>
+            </div>
         </div>
     </div>
-    </modal>`
+    </modal>`);
     $("body").append(modaladdDeleteMyList);
     $(`#${modalId} .modalOverlay`).height(Math.max($(`#${modalId} .generalModal`).height(), window.innerHeight));
     return modalId;
@@ -1195,7 +1217,7 @@ function createMyListModal() {
     <div class="modalOverlay"></div>
     <div class="generalModal" style="left: 258px; top: 229.6px;">
         <div class="titleArea">
-            <div class="title">新しいマイリストを作成</div>
+            <div class="title">新しいリストを作成</div>
             <div class="closeBtn btnCloseModal"><i class="icon iconCircleClose"></i></div>
         </div>
         <div class="modalNewMyListIn">

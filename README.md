@@ -41,6 +41,9 @@ dアニメストアの作品を自在に管理しましょう！ (Chrome Store�
 本拡張機能はまだ動作が不安定です。
 ご了承ください。
 
+## Contact Me
+- Gmail: TomoIris427+GitHub@gmail.com
+
 ## License
 
 MIT
