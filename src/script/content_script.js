@@ -513,7 +513,7 @@ async function showCacheList(args = { container: null, IsPrepended: true }) {
                     </div>
                     <h3 class="line2">
                         <span class="ui-clamp webkit2LineClamp">${cacheList.name}</span>
-                        <p class="count">${(cacheList.workIds||[]).length}</p>
+                        <p class="count">${(cacheList.workIds || []).length}</p>
                     </h3>
                 </a>
             </section>
@@ -749,17 +749,17 @@ async function deleteList(selectedLists = { cache: [], share: [] }) {
     const lists = {
         cache: await getSyncStorage({ lists: JSON.stringify({}) }).then(items => JSON.parse(items.lists)),
         share: await getSyncStorage({ shareLists: JSON.stringify({}) }).then(items => JSON.parse(items.shareLists))
-    }
+    };
     const filteredLists = Object.assign(...Object.entries(selectedLists)
-    .map(kv => ({ [kv[0]]:
-        Object.assign(...Object.values(lists[kv[0]])
-            .filter(list=>selectedLists[kv[0]].indexOf(list.listId)!=-1)
-            .map(list=>({[list.listId]:list})).concat({}) ) }) ));
+        .map(kv => ({
+            [kv[0]]: Object.assign(...Object.values(lists[kv[0]])
+                .filter(list => selectedLists[kv[0]].indexOf(list.listId) == -1)
+                .map(list => ({ [list.listId]: list })).concat({}))
+        })));
 
-    console.log(filteredLists, selectedLists)
     if (selectedLists.cache.length > 0) {
         await setSyncStorage({ lists: JSON.stringify(filteredLists.cache) });
-    }
+    };
     if (selectedLists.share.length > 0) {
         await setSyncStorage({ shareLists: JSON.stringify(filteredLists.share) });
         const deletedIds = Object.keys(lists.share).filter(id => selectedLists.share.indexOf(id) != -1);
@@ -1219,7 +1219,7 @@ function createMyListModal() {
 
 async function dragItemEditMode(containerIn = null) {
     setTransit();
-    const modalExists=$("modal.viewCacheListDialog").length>0;
+    const modalExists = $("modal.viewCacheListDialog").length > 0;
     const container = containerIn || $("modal.viewCacheListDialog");
     const _ = window.COMMON.pointerEvent;
     const normalizeEvent = (e) => {
@@ -1267,7 +1267,7 @@ async function dragItemEditMode(containerIn = null) {
         const listEl = list[0];
         const listWidth = list.outerWidth();
         const listHeight = list.outerHeight();
-        let windowHeight =  window.innerHeight; //
+        let windowHeight = window.innerHeight; //
         let documentHeight = modalExists ? container.height() : $(document).height();
         const editFooterHeight = editFooter.height();
         const SCROLL_DISTANCE = 15;
@@ -1316,7 +1316,7 @@ async function dragItemEditMode(containerIn = null) {
         });
         centerPointList = initPointList();
         //const compY = $("modal").length == 0 ? 0 : $("div.itemWrapper", container).offset().top;
-        const compY= modalExists ? 0 : contentRoot.offset().top;
+        const compY = modalExists ? 0 : contentRoot.offset().top;
         //console.log(compY, $("div.btnSubscript", container).offset().top, $(container).innerHeight(), $("div.itemWrapper", container).innerHeight())
         $(window).on(_.addLabel(_.addMouseEventName(_.move), ".drag.editmode"), (e) => {
             if (e.originalEvent && e.originalEvent.movementX === 0 && e.originalEvent.movementY === 0) {
