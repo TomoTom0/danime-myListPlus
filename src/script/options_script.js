@@ -22,7 +22,7 @@ document.addEventListener("click", async function(e){
     } else if (e_class.indexOf("btnCheck2")!=-1){
         chrome.storage.sync.set({ lists: JSON.stringify({})})
     }  else if (e_class.indexOf("btnCheck3")!=-1){
-        const items = await getSyncStorage({ lists: JSON.stringify({})});
+        const items = await getSyncStorage({ lists: JSON.stringify({}), sortListIndex:JSON.stringify({}), shareLists:JSON.stringify({})});
         console.log(items)
         console.log(JSON.parse(items.lists))
     }

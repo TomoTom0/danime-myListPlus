@@ -31,3 +31,241 @@ html.mouseDevice .editFooter .btnChEx1:hover{
     text-decoration:none;background:#f4997e
 }
 
+
+.mypageHeader .btnSelectReset {
+    display: none;
+    position: absolute;
+    right: 0;
+    top: -10px;
+    padding: 10px 0 10px 10px;
+    font-weight: bold;
+    font-size: 1.2rem;
+    color: #ea552a;
+    cursor: pointer
+}
+
+.mypageHeader .btnSelectReset .checkboxChEx {
+    padding: 0;
+    height: auto;
+    background: 0;
+    border: 0;
+    white-space: nowrap
+}
+
+.mypageHeader .btnSelectReset .checkboxChEx span {
+    display: inline-block;
+    position: relative;
+    top: -6px;
+    vertical-align: middle;
+    padding: 0
+}
+
+html.mouseDevice .mypageHeader .btnSelectReset .checkboxChEx:hover span {
+    text-decoration: underline
+}
+
+.mypageHeader .btnSelectReset .checkboxChEx .count {
+    display: none
+}
+
+.mypageHeader .btnEdit, .mypageHeader .btnEditCancel, .mypageHeader .btnHelp {
+    position: absolute;
+    right: 0;
+    top: -10px;
+    padding: 10px;
+    font-size: 1.2rem;
+    cursor: pointer
+}
+
+.mypageHeader .btnEditCancel {
+    display: none
+}
+
+.mypageHeader .btnEdit a, .mypageHeader .btnEditCancel a {
+    display: block
+}
+
+.mypageHeader .btnEdit a i, .mypageHeader .btnEditCancel a i {
+    vertical-align: middle
+}
+
+@media screen and (min-width:500px) {
+    .mypageHeader .btnSelectReset {
+        right: 250px
+    }
+    .mypageHeader .btnSelectReset .checkboxChEx .count {
+        display: inline-block
+    }
+}
+
+.editFooter {
+    position: fixed;
+    left: 0;
+    bottom: 0;
+    z-index: 200;
+    width: 100%;
+    background: #fff;
+    box-shadow: 0 0 3px 3px rgba(0, 0, 0, 0.15)
+}
+
+body:not(.editMode) .editFooter {
+    display: none
+}
+
+.editFooter .btnCancel {
+    float: left;
+    width: 45%;
+    margin: 8px 2.5% 8px 3.75%;
+    padding: 12px 0;
+    background: #fc0;
+    text-align: center;
+    font-weight: bold;
+    font-size: 1.4rem;
+    color: #000;
+    cursor: pointer
+}
+
+.editFooter .btnDelete {
+    float: right;
+    width: 45%;
+    margin: 8px 3.75% 8px 0;
+    padding: 12px 0;
+    background: #ec5528;
+    text-align: center;
+    font-weight: bold;
+    font-size: 1.4rem;
+    color: #fff;
+    cursor: pointer
+}
+
+html.mouseDevice .editFooter .btnCancel:hover {
+    background: #ffe066;
+    text-decoration: none
+}
+
+html.mouseDevice .editFooter .btnDelete:hover {
+    background: #f3997e;
+    text-decoration: none
+}
+
+.editFooter a.btnDelete:link, html.mouseDevice .editFooter .btnDelete a:hover, .editFooter a.btnDelete:visited, html.mouseDevice .editFooter a.btnDelete:active {
+    color: #fff
+}
+
+.dmarketWrapper .contentsWrapperIn h2.contentsTitle {
+    margin-bottom: 0
+}
+
+.snsWrapper {
+    padding: 0 3.75% 20px
+}
+
+.dmarketWrapper {
+    padding-bottom: 10px
+}
+
+.itemWrapper .itemModule.dmarket section {
+    max-width: none
+}
+
+@media screen and (max-width:400px) {
+    .itemWrapper .itemModule.list .itemModuleIn .textContainer .textContainerIn {
+        padding: 0 3px
+    }
+    .contentsWrapper .itemWrapper .itemModule.list .textContainer .iconContainer {
+        padding-left: 3px
+    }
+    .itemWrapper .itemModule .addMyList {
+        letter-spacing: -1px
+    }
+}
+
+.headerSubTab {
+    position: relative
+}
+
+.headerSubTab.scroll {
+    overflow-x: auto
+}
+
+.headerSubTab::-webkit-scrollbar {
+    display: none
+}
+
+.headerSubTab.scroll ul li {
+    width: auto
+}
+
+.headerSubTab.scroll ul li a {
+    padding-left: 13px;
+    padding-right: 13px;
+    white-space: nowrap
+}
+
+.editFooter .btnDelete .count:before, .contentsWrapper .mypageHeader .listTitle .count:before, .contentsWrapper .mypageHeader .btnSelectReset .checkboxChEx .count:before, .contentsWrapper .btnSubscript .btnArea .btnSelectReset .checkboxChEx .count:before, .contentsWrapper .btnArea.all .btnList .count:before, .contentsWrapper .itemWrapper .itemModule.mylist .line2 .count:before {
+    content: "("
+}
+
+.editFooter .btnDelete .count:after, .contentsWrapper .mypageHeader .listTitle .count:after, .contentsWrapper .mypageHeader .btnSelectReset .checkboxChEx .count:after, .contentsWrapper .btnSubscript .btnArea .btnSelectReset .checkboxChEx .count:after, .contentsWrapper .btnArea.all .btnList .count:after, .contentsWrapper .itemWrapper .itemModule.mylist .line2 .count:after {
+    content: ")"
+}
+
+@media screen and (min-width:960px) {
+    .bannerWrapper {
+        padding: 30px 3.75%
+    }
+    .pageHeaderSub .pageHeaderIn {
+        padding: 0
+    }
+    .pageHeaderSub .pageHeaderIn .titleWrapper {
+        max-width: 860px;
+        padding: 0
+    }
+    .pageHeaderSub .pageHeaderIn .titleWrapper .title h1 {
+        float: left;
+        width: auto;
+        font-weight: bold;
+        font-size: 2.4rem;
+        line-height: 100%;
+        padding-top: 22px
+    }
+    .pageHeaderSub .pageHeaderIn .titleWrapper .title p {
+        float: left;
+        padding: 25px 0 0 20px
+    }
+    .pageHeaderSub .pageHeaderIn .titleWrapper .product, .pageHeaderSub .pageHeaderIn .titleWrapper .episode {
+        margin-top: 14px
+    }
+    .pageHeaderSub .pageHeaderIn .titleWrapper .product {
+        margin-right: 10px
+    }
+    .pageHeaderSub .pageHeaderIn .titleWrapper .product .now span, .pageHeaderSub .pageHeaderIn .titleWrapper .episode .now span {
+        font-size: 1.3rem;
+        font-weight: bold;
+        line-height: 100%
+    }
+    .pageHeaderSub .pageHeaderIn .titleWrapper .product .max, .pageHeaderSub .pageHeaderIn .titleWrapper .episode .max {
+        font-size: 1rem
+    }
+    .pageHeaderSub .pageHeaderIn .titleWrapper .product .max span, .pageHeaderSub .pageHeaderIn .titleWrapper .episode .max span {
+        font-size: 1.3rem
+    }
+    .mypageHeader {
+        position: relative;
+        min-height: 50px;
+        margin-bottom: 8px;
+        font-size: 1.4rem;
+        font-weight: bold
+    }
+    .mypageHeader .listTitle {
+        padding-top: 15px
+    }
+    .mypageHeader .count {
+        font-size: 1.2rem;
+        font-weight: normal;
+        padding: 15px 0 0 10px
+    }
+    .mypageHeader .btnSelectReset {
+        top: 5px
+    }
+}
