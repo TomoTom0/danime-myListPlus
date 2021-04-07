@@ -269,3 +269,19 @@ html.mouseDevice .editFooter .btnDelete:hover {
         top: 5px
     }
 }
+
+
+
+.itemWrapper .itemModule.mylist.add .createMyListIn {
+	position: absolute;
+	margin: auto;
+	top: 0;
+	left: 0;
+	bottom: 0;
+	right: 0;
+	width: 110px;
+	height: 40px;
+	text-align: center;
+	font-size: 1.2rem;
+	font-weight: bold;
+}

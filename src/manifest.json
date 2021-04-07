@@ -1,7 +1,7 @@
 {
   "name": "danime My List Plus",
   "description": "dアニメストアのリスト編集機能を改良します。",
-  "version": "0.1",
+  "version": "0.3.2.3",
   "manifest_version": 2,
   "content_scripts": [{
     "matches": ["https://anime.dmkt-sp.jp/animestore/*"],
@@ -9,8 +9,5 @@
     "css":["script/content.css"]
   }],
   "permissions":["storage"],
-  "options_ui": {
-    "page": "script/options.html",
-    "open_in_tab": true
-  }
+  "icons":{"128":"img/danimeMyListPlus-icon128.png"}
 }

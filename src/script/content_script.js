@@ -1,4 +1,8 @@
-﻿const GLOBAL_cache_prefix = "cache_";
+﻿"use strict";
+
+// # setup
+
+const GLOBAL_cache_prefix = "cache_";
 const GLOBAL_listName_sep = "@@";
 
 const colorSettingsDefault = { workIsColored: true }
@@ -26,20 +30,23 @@ const obtainContainer = (url_mode) => {
     } else return $("div.pageWrapper");
 }
 
+// # async funtion
 $(async function () {
     $("div.mypageHeader").attr({ style: "position:-webkit-sticky; position:sticky; top:10px; background:rgba(255,255,255,0.9); z-index:1000;" });
 
+    const url_mode_initial = obtainUrlMode();
     await addInitialButton();
     await getSyncStorage({ expandMode: "", colorSettings: colorSettingsString }).then(async items => {
         const expandMode = items.expandMode;
         const colorSettings = JSON.parse(items.colorSettings);
         if (colorSettings.workIsColored) await colorItemWork();
-        await expandPage(expandMode);
+        if (["viewList"].indexOf(url_mode_initial)==-1){
+            await expandPage(expandMode);
+        }
     })
     if (location.href.indexOf("://anime.dmkt-sp.jp/animestore/mpa_shr_pc") != -1) {
         $("div.pageWrapper > div.headerSubTab > ul > li.current > a").attr({ href: "mpa_mylists_pc" }).css({ cursor: "pointer", "pointer-events": "auto" });
     }
-    const url_mode_initial = obtainUrlMode();
     if (/viewList/.test(url_mode_initial)) {
         await sortLists({ initial: true });
         const btnEdit = $("body > div.pageWrapper > div.contentsWrapper > div.mypageHeader > div.btnEdit");
@@ -55,7 +62,8 @@ $(async function () {
         const container = obtainContainer(url_mode);
         const IsEditMode = $("body").is(".editMode");
 
-        // ----------- open modal --------------
+        // --------------------------------------
+        //             ## open modal
         if ($(e.target).is(".itemModule.mylist.openCacheList *")) {
             const cacheListId = $(e.target).parents("a:eq(0)").data("cachelistid").toString();
             await viewWorksOfCacheListModal(cacheListId);
@@ -68,7 +76,8 @@ $(async function () {
             const workIsSelected = $("div.itemModule.selected>input", container).length > 0; // list & mylist
             otherMenuModal({ locate, workIsSelected });
         }
-        // ------------ operate --------------
+        // --------------------------------------
+        //             ## operate List
         else if ($(e.target).is(".btnOperateFav")) {
             if ($("div.itemModule.list.selected", container).length == 0) return;
             const workIdsTmp = $("div.itemModule.list.selected", container).map((ind, obj) => $(obj).data("workid"));
@@ -122,7 +131,9 @@ $(async function () {
             $("div.itemModule.selected", container).removeClass("selected").addClass("notSelected");
             $("div.btnSelectReset span.count", container).text(0);
         }
-        // -------------- modal actions -------------------
+        // -----------------------------------------
+        //             ## modal actions
+
         else if ($(e.target).is("modal.modalDialogChEx *")) {
             const modal = $(e.target).parents("modal");
             if ($(e.target).is(".closeBtn *, .closeBtn")) {
@@ -173,7 +184,9 @@ $(async function () {
                 const selectedWorks = $("div.formContainerIn .itemModule.list.selected", modal);
                 $(".btnDelete span", modal).html(selectedWorks.length);
             }
-            // -------------- modal editFooter ---------------
+            // --------------------------------------
+            //             ## modal editFooter
+
             else if (IsEditMode && $(e.target).is(".editFooter *")) {
                 const cacheListId = modal.data("cachelistid").toString();
                 if ($(e.target).is(".btnDelete, .btnDelete *")) {
@@ -198,7 +211,9 @@ $(async function () {
                     await showCacheList();
                 }
             }
-            // -------------------- modal other menu --------------------
+            // -------------------------------------------
+            //             ## modal other menu
+
             else if ($(e.target).is("modal.otherMenuDialog *")) {
                 const otherMenuModal = $("modal.otherMenuDialog");
                 const otherMenuPar = otherMenuModal.attr("class").match(/(?<=otherMenu)\d+/)[0];
@@ -251,7 +266,8 @@ $(async function () {
         }
     })
 
-    // ------------- oberver --------------------
+    // -------------------------------------------
+    //             ## observer
 
     const observer = new MutationObserver(async records => {
         for (const record of records) {
@@ -304,7 +320,8 @@ const triggerDrag = async (args = { IsEdit, mode }) => {
     else await mode_dic[args.mode].remakeFunc();
 }
 
-// ------------------ import / export------------
+// -------------------------------------------
+//             # import / export
 
 async function exportList(listIds = { cache: [], share: [] }, formatIn = null) {
     const format = formatIn || "json";
@@ -390,8 +407,9 @@ async function importList(textIn, listIds = { cache: [], share: [] }) {
     }
 }
 
-// ------------------ initial --------------------
-
+// -------------------------------------------
+//             # initial
+//             ## add button
 async function addInitialButton(args = { url_mode: null, area: null }) {
     const area = args.area || $("div.pageWrapper");
     const url_mode = args.url_mode || obtainUrlMode();
@@ -499,6 +517,7 @@ async function addInitialButton(args = { url_mode: null, area: null }) {
 
 }
 
+//             ## cache list
 async function showCacheList(args = { container: null, IsPrepended: true }) {
     const container = args.container || $("div.pageWrapper");
     $("div.openCacheList.itemModule.mylist").remove();
@@ -537,7 +556,7 @@ async function showCacheList(args = { container: null, IsPrepended: true }) {
 async function sortLists(args = { initial: false }) {
     const sortListIndexes = await getSyncStorage({ sortListIndex: JSON.stringify({}) }).then(items => JSON.parse(items.sortListIndex));
     const listDOMs = $("div.pageWrapper .itemModule.mylist");
-    inds = listDOMs.clone().map((ind, obj) => sortListIndexes[$("input[type='hidden']", obj).val()])
+    //inds = listDOMs.clone().map((ind, obj) => sortListIndexes[$("input[type='hidden']", obj).val()])
     const listClone = listDOMs.clone().slice().sort((a, b) => {
         const indexes = [a, b].map(d => $("input[type='hidden']", d).val())
             .map(d => sortListIndexes[d] || 0);
@@ -576,7 +595,7 @@ function toggleEdit(container, editMode) {
     });
 }
 
-
+//             ## expand page
 async function expandPage(btnClass = "All") {
     const beforeExpandArea = $("div.pageWrapper div.itemWrapper.clearfix .itemForExpand");
     if (beforeExpandArea.length > 0) beforeExpandArea.remove();
@@ -606,6 +625,7 @@ async function expandPage(btnClass = "All") {
     const divForExpand = $("<div>", { class: `itemForExpand ${expandMode}` });
     $("div.pageWrapper div.itemWrapper.clearfix").append(divForExpand);
 
+    if (pageRange.length <= 0) return;
     for (const pageNum of [...Array(pageRange.length).keys()].map(d => d + pageRange.first)) {
         const content = await obtainStreamBody(`${urlBase}${pageNum}`);
         const workIdsTmp = $("div.itemWrapper.clearfix .itemModule.list", content).map((ind, obj) => $(obj).data("workid"));
@@ -623,6 +643,7 @@ async function expandPage(btnClass = "All") {
     await setSyncStorage({ expandMode: expandMode });
 }
 
+//             ## colorize
 const obtainWorkBGColors = async (workIds) => {
     const items = await getSyncStorage({ lists: JSON.stringify({}) });
     const favWorkIds = await fetch(window.COMMON.RESTAPI_ENDPOINT.getMyListStatus + "?targetFlag=10&workIdList=" + workIds.join("_")).then(d => d.json())
@@ -692,7 +713,8 @@ async function saveShareLists(shareListIdsIn = null) {
     await setSyncStorage({favWorkIds:favWorkIds});
 }*/
 
-// ----------------- edit List --------------------
+// -------------------------------------------
+//             # edit List
 
 async function copyList(IsCached) {
     const selectedLists = $("div.pageWrapper .itemWrapper .itemModule.mylist.selected");
@@ -841,7 +863,9 @@ async function deleteWorkFromLists(workIdsIn, listsDic) {
     }
 }
 
-//--------- others -----------------
+// -------------------------------------------
+//             # other functions
+
 
 function split_data(data) {
     const split_sep = "__SPLIT__";
@@ -868,7 +892,8 @@ const obtainStreamBody = async (url) => {
     return "";
 }
 
-// ------------------ about Modal -------------------
+// -------------------------------------------
+//             ## about modal
 
 async function otherMenuModal(args = { locate:"ViewList", workIsSelected: false }) {
     const argsStr = [args.locate=="ViewList" ? 1 : 0, args.workIsSelected-0].join("");
@@ -892,7 +917,6 @@ async function otherMenuModal(args = { locate:"ViewList", workIsSelected: false 
             </div>
         </div>
     </modal>`);
-    
 
     const obtainVariable = {
         ViewList: args.workIsSelected ? 
@@ -1006,7 +1030,7 @@ async function viewWorksOfCacheListModal(cacheListId) {
     const modalHTML = `
     <modal id="${modalId}" class="modalDialog modalDialogChEx viewCacheListDialog" data-cachelistid="${cacheListId}" style="overflow-y:scroll;">
     <div class="modalOverlay" style="overflow-y:hidden;"></div>
-    <div class="generalModal" style="left: 3vw; width: 85vw; top:2vh;height:90vh;overflow-y:scroll;">
+    <div class="generalModal" style="width: 85vw; top:2vh;height:90vh;overflow-y:scroll; max-width: 1000px;">
         <div class="titleArea">
             <div class="title">リスト</div>
             <div class="closeBtn btnCloseModal"><i class="icon iconCircleClose"></i></div>
@@ -1163,7 +1187,7 @@ async function addDeleteMyListModal(container = $("div.pageWrapper")) {
     const modaladdDeleteMyList = $(`
     <modal id="${modalId}" class="modalDialog modalDialogChEx addDeleteMyListDialog" style="overflow-y:scroll;">
     <div class="modalOverlay"></div>
-    <div class="generalModal" style="left: 25vw; top: 5vh; width:50vw;overflow-y:scroll;">
+    <div class="generalModal" style="left: 25vw; top: 5vh; width:50vw;overflow-y:scroll; max-width: 500px;">
         <div class="titleArea">
             <div class="title">リストに追加</div>
             <div class="closeBtn btnCloseModal"><i class="icon iconCircleClose"></i></div>
@@ -1236,8 +1260,8 @@ function createMyListModal() {
     return modalId;
 }
 
-
-// -------------- for drag -------------
+// -------------------------------------------
+//             # for drag
 
 async function dragItemEditMode(containerIn = null) {
     setTransit();
@@ -1382,7 +1406,7 @@ async function dragItemEditMode(containerIn = null) {
 
             list.data("isMove", true);
             // 画面上下にドラッグした場合にスクロール追従させる
-            distance = 0;
+            let distance = 0;
             if (event.clientY < THRESHOLD || event.clientY > THRESHOLD_BOTTOM) {
                 cancelAnimationFrame(intervalTimerId); intervalTimerId = null;
                 distance = event.clientY < THRESHOLD ? scrollFunc(THRESHOLD - event.clientY, "up", event.rate) : scrollFunc(event.clientY - THRESHOLD_BOTTOM, "down", event.rate);
@@ -1499,8 +1523,8 @@ async function dragItemEditMode(containerIn = null) {
 
 }
 
-
-//------------------ modified from from common.js -------------
+// -------------------------------------------------------------
+//             #  modified from common.js
 
 // 作品のマイリスト登録状況を編集(追加削除)する
 async function _editMyList(workId, regShareListIdList, delShareListIdList) {
@@ -1633,8 +1657,8 @@ const _registFavoriteWorkOrTag = async function (idOrList, updateType) {
     return await _restPost(endpointUrl, params);
 };
 
-// -------------- from common.js ----------------
-
+// -------------------------------------------
+//             # from common.js
 
 window.COMMON = {
     cookieMap: {},			// cookieをオブジェクト形式で保存したもの
@@ -1804,13 +1828,13 @@ window.COMMON.showToast = function (text) {
 };*/
 
 function setTransit() {
-    $html = $("html");
+    const $html = $("html");
     // PCとスマホのホバー処理の追加
-    var isTouchDevice = "ontouchstart" in window || navigator.msMaxTouchPoints > 0;
+    const isTouchDevice = "ontouchstart" in window || navigator.msMaxTouchPoints > 0;
     $html.addClass((isTouchDevice) ? "touchDevice" : "mouseDevice");
     window.COMMON.isTouchDevice = isTouchDevice;
-    var isPointerEnable = window.navigator.pointerEnabled;
-    var isMsPointerEnable = window.navigator.msPointerEnabled;
+    const isPointerEnable = window.navigator.pointerEnabled;
+    const isMsPointerEnable = window.navigator.msPointerEnabled;
     window.COMMON.pointerEvent = {
         // スペースで区切られたイベント名に対してラベルを付加する
         addLabel: function (eventName, label) {
