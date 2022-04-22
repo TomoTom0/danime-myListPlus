@@ -10,15 +10,15 @@ const colorSettingsString = JSON.stringify(colorSettingsDefault)
 
 const obtainUrlMode = () => {
     const url_mode = (Object.entries({
-        viewList: "https://anime.dmkt-sp.jp/animestore/mpa_mylists_pc",
-        editList: "https://anime.dmkt-sp.jp/animestore/mpa_shr_pc",
-        viewNext: "https://anime.dmkt-sp.jp/animestore/mp_viw_pc",
-        viewFav: "https://anime.dmkt-sp.jp/animestore/mpa_fav_pc",
-        viewedAnime: "https://anime.dmkt-sp.jp/animestore/mpa_hst_pc",
-        viewedComp: "https://anime.dmkt-sp.jp/animestore/mpa_cmp_pc",
-        viewedRent: "https://anime.dmkt-sp.jp/animestore/mp_hst_pc",
-        viewedLimit: "https://anime.dmkt-sp.jp/animestore/mpa_lmt_pc",
-        viewAllList: "https://anime.dmkt-sp.jp/animestore/mpa_rsv_pc"
+        viewList: "https://animestore.docomo.ne.jp/animestore/mpa_mylists_pc",
+        editList: "https://animestore.docomo.ne.jp/animestore/mpa_shr_pc",
+        viewNext: "https://animestore.docomo.ne.jp/animestore/mp_viw_pc",
+        viewFav: "https://animestore.docomo.ne.jp/animestore/mpa_fav_pc",
+        viewedAnime: "https://animestore.docomo.ne.jp/animestore/mpa_hst_pc",
+        viewedComp: "https://animestore.docomo.ne.jp/animestore/mpa_cmp_pc",
+        viewedRent: "https://animestore.docomo.ne.jp/animestore/mp_hst_pc",
+        viewedLimit: "https://animestore.docomo.ne.jp/animestore/mpa_lmt_pc",
+        viewAllList: "https://animestore.docomo.ne.jp/animestore/mpa_rsv_pc"
     }).filter(kv => location.href.indexOf(kv[1]) != -1)[0] || [""])[0];
     const modalClass = $("modal").map((ind, obj) => $(obj).attr("class").split(" ").filter(d => /Dialog$/.test(d) && d != "modalDialog").join(" "))
         .toArray().join(" ");
@@ -44,7 +44,7 @@ $(async function () {
             await expandPage(expandMode);
         }
     })
-    if (location.href.indexOf("://anime.dmkt-sp.jp/animestore/mpa_shr_pc") != -1) {
+    if (location.href.indexOf("://animestore.docomo.ne.jp/animestore/mpa_shr_pc") != -1) {
         $("div.pageWrapper > div.headerSubTab > ul > li.current > a").attr({ href: "mpa_mylists_pc" }).css({ cursor: "pointer", "pointer-events": "auto" });
     }
     if (/viewList/.test(url_mode_initial)) {
@@ -694,7 +694,7 @@ async function saveShareLists(shareListIdsIn = null) {
 }
 
 /* async function saveFavorites() {
-    const urlFav = "https://anime.dmkt-sp.jp/animestore/mpa_fav_pc";
+    const urlFav = "https://animestore.docomo.ne.jp/animestore/mpa_fav_pc";
     const htmlContent=await obtainStreamBody(urlFav);
     const itemFirst=$("div.itemWrapper.clearfix .itemModule.list input", htmlContent);
     const ul=$("ul.onlyPcLayout", htmlContent);
@@ -990,7 +990,7 @@ const work2item = async (workId) => {
     <div class="itemModule list mybest" data-workid="${workId}">
         <input type="hidden" name="workId" value="${workId}" class="workId">
         <section class="itemModuleSection">
-            <a href="https://anime.dmkt-sp.jp/animestore/ci_pc?workId=${workId}" class="itemModuleIn">
+            <a href="https://animestore.docomo.ne.jp/animestore/ci_pc?workId=${workId}" class="itemModuleIn">
                 <div class="thumbnailContainer">
                     <div class="imgWrap16x9"><img class="lazyloaded verticallyLong"
                             src="https://cs1.anime.dmkt-sp.jp/anime_kv/img/${workId.slice(0, 2)}/${workId.slice(2, 4)}/${workId.slice(4, 5)}/${workId}_1_5.png"
